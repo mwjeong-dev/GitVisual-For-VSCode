@@ -38,7 +38,15 @@ export function layoutCommits(commits: readonly GraphCommitDto[]): GraphLayout {
 	const nodes: LayoutNode[] = [];
 	const edges: LayoutEdge[] = [];
 
-	const claimLane = (hash: string): number => {
+	const claimLane = (hash: string, reuseFree = true): number => {
+		// A commit that no existing lane is waiting for is a new visible tip
+		// (typically another branch in `git log --all`). Keep such tips in
+		// distinct columns even when an earlier disconnected history ended;
+		// otherwise multiple branches collapse onto one vertical line.
+		if (!reuseFree) {
+			activeLanes.push(hash);
+			return activeLanes.length - 1;
+		}
 		const free = activeLanes.indexOf(null);
 		if (free !== -1) {
 			activeLanes[free] = hash;
@@ -51,7 +59,7 @@ export function layoutCommits(commits: readonly GraphCommitDto[]): GraphLayout {
 	commits.forEach((commit, row) => {
 		let column = activeLanes.indexOf(commit.hash);
 		if (column === -1) {
-			column = claimLane(commit.hash);
+			column = claimLane(commit.hash, false);
 		}
 		for (let i = 0; i < activeLanes.length; i++) {
 			if (activeLanes[i] === commit.hash) {

@@ -31,11 +31,14 @@ export type ExtensionToWebviewMessage =
 export type WebviewToExtensionMessage =
 	| { readonly type: 'ready' }
 	| { readonly type: 'selectFile'; readonly uri: string }
+	| { readonly type: 'openFileDiff'; readonly uri: string }
 	| { readonly type: 'setSelection'; readonly uri: string; readonly selectedKeys: string[] }
 	| { readonly type: 'stageFile'; readonly uri: string }
 	| { readonly type: 'unstageFile'; readonly uri: string }
 	| { readonly type: 'commit'; readonly message: string; readonly amend: boolean }
+	| { readonly type: 'commitAndPush'; readonly message: string; readonly amend: boolean }
 	| { readonly type: 'commitChangelist'; readonly changelistId: string; readonly message: string; readonly amend: boolean }
+	| { readonly type: 'commitChangelistAndPush'; readonly changelistId: string; readonly message: string; readonly amend: boolean }
 	| { readonly type: 'createChangelist'; readonly name: string }
 	| { readonly type: 'renameChangelist'; readonly id: string; readonly name: string }
 	| { readonly type: 'deleteChangelist'; readonly id: string }

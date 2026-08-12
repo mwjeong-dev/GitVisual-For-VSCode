@@ -13,11 +13,11 @@ const FORMAT_FIELDS = ['%H', '%P', '%an', '%ad', '%D', '%s'];
  * follows every entry, including the last, with no extra auto-inserted
  * newlines between entries to account for.
  */
-export async function loadCommits(repoRoot: string, maxCount: number): Promise<GraphCommitDto[]> {
+export async function loadCommits(repoRoot: string, maxCount: number, ref?: string): Promise<GraphCommitDto[]> {
 	const format = FORMAT_FIELDS.join(FIELD_SEP);
 	const { stdout } = await spawnGit(repoRoot, [
 		'log',
-		'--all',
+		...(ref ? [ref] : ['--all']),
 		'--topo-order',
 		'--date=iso-strict',
 		`--pretty=tformat:${format}${RECORD_SEP}`,

@@ -7,6 +7,8 @@ import type {
 import type { DiffHunk } from '../../src/shared/protocol/diff';
 
 const vscode = acquireVsCodeApi();
+const ko = navigator.language.toLowerCase().startsWith('ko');
+const text = (english: string, korean: string): string => ko ? korean : english;
 
 function post(message: WebviewToExtensionMessage): void {
 	vscode.postMessage(message);
@@ -24,13 +26,17 @@ let creatingChangelist = false;
 const root = document.getElementById('root')!;
 root.innerHTML = `
 	<div class="layout">
+		<div class="panel-toolbar">
+			<button id="refresh-files" title="${text('Refresh changes', '변경 사항 새로고침')}">↻</button>
+			<button id="expand-all" title="${text('Expand all', '모두 펼치기')}">↕</button>
+			<button id="collapse-all" title="${text('Collapse all', '모두 접기')}">↥</button>
+		</div>
 		<div class="file-list" id="file-list"></div>
 		<div class="diff-view" id="diff-view"></div>
 		<div class="commit-box">
-			<select id="commit-target"></select>
-			<textarea id="commit-message" placeholder="Commit message"></textarea>
-			<label class="amend-row"><input type="checkbox" id="amend-checkbox"> Amend</label>
-			<button id="commit-button">Commit</button>
+			<div class="commit-options"><label class="amend-row"><input type="checkbox" id="amend-checkbox"> ${text('Amend', '수정(M)')}</label><select id="commit-target"></select></div>
+			<textarea id="commit-message" placeholder="${text('Commit message', '커밋 메시지')}"></textarea>
+			<div class="commit-actions"><button id="commit-button">${text('Commit', '커밋(I)')}</button><button id="commit-push-button">${text('Commit and Push…', '커밋 및 푸시(P)…')}</button></div>
 		</div>
 	</div>
 `;
@@ -41,9 +47,12 @@ style.textContent = `
 	body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 0; margin: 0; }
 	.layout { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
-	.file-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid var(--vscode-panel-border); }
+	.panel-toolbar { flex: 0 0 auto; display: flex; gap: 4px; align-items: center; min-height: 38px; padding: 3px 9px; border-bottom: 1px solid var(--vscode-panel-border); }
+	.panel-toolbar button { width: 30px; height: 28px; padding: 0; color: var(--vscode-icon-foreground); background: transparent; font-size: 18px; }
+	.panel-toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
+	.file-list { flex: 1 1 auto; min-height: 180px; overflow: auto; border-bottom: 1px solid var(--vscode-panel-border); }
 
-	.group-header { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--vscode-sideBarSectionHeader-background); cursor: pointer; }
+	.group-header { display: flex; align-items: center; gap: 5px; min-height: 28px; padding: 2px 9px; cursor: pointer; }
 	.group-header:hover { background: var(--vscode-list-hoverBackground); }
 	.group-header .chevron { flex: 0 0 auto; width: 1em; text-align: center; opacity: 0.8; }
 	.group-header input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
@@ -57,18 +66,18 @@ style.textContent = `
 	.new-changelist-row:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
 	.new-changelist-row input { width: 100%; box-sizing: border-box; }
 
-	.file-item { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 26px; cursor: pointer; min-width: 0; }
+	.file-item { display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 1px 9px 1px 52px; cursor: pointer; min-width: 540px; border-radius: 3px; }
 	.file-item:hover { background: var(--vscode-list-hoverBackground); }
 	.file-item.selected { background: var(--vscode-list-activeSelectionBackground); }
 	.file-item input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
 	.file-item .path { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-	.file-item .name { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+	.file-item .name { color: var(--vscode-textLink-foreground); font-size: 13px; }
 	.file-item.untracked .name { color: var(--vscode-gitDecoration-untrackedResourceForeground); }
-	.file-item .dir { opacity: 0.6; margin-left: 6px; font-size: 0.9em; }
+	.file-item .dir { color: var(--vscode-descriptionForeground); margin-left: 6px; font-size: 12px; }
 	.file-item .move-select { flex: 0 0 auto; visibility: hidden; max-width: 100px; font-size: 0.85em; }
 	.file-item:hover .move-select, .file-item.selected .move-select { visibility: visible; }
 
-	.diff-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: auto; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); }
+	.diff-view { display: none; }
 	.hunk-header { background: var(--vscode-diffEditor-unchangedRegionBackground, #3332); padding: 2px 6px; opacity: 0.8; white-space: nowrap; }
 	.diff-line { display: flex; white-space: pre; padding: 0 6px; }
 	.diff-line.add { background: var(--vscode-diffEditor-insertedTextBackground); }
@@ -76,10 +85,14 @@ style.textContent = `
 	.diff-line input { margin-right: 6px; flex: 0 0 auto; }
 	.diff-line .content { flex: 1 1 auto; }
 
-	.commit-box { flex: 0 0 auto; display: flex; flex-direction: column; padding: 6px; gap: 6px; border-top: 1px solid var(--vscode-panel-border); }
+	.commit-box { flex: 0 0 270px; display: flex; flex-direction: column; padding: 10px 12px; gap: 9px; border-top: 1px solid var(--vscode-panel-border); }
+	.commit-options { display: flex; align-items: center; gap: 8px; }
+	.commit-options select { width: auto; border: 0; background: transparent; }
+	.commit-actions { display: flex; gap: 10px; }
+	.commit-actions button { min-width: 108px; }
 	.amend-row { display: flex; align-items: center; gap: 4px; font-size: 0.9em; cursor: pointer; }
 	textarea, select, input[type="text"] { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: inherit; }
-	textarea { resize: vertical; min-height: 3em; }
+	textarea { resize: none; flex: 1; min-height: 120px; padding: 8px; }
 	button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 8px; cursor: pointer; }
 	button:hover { background: var(--vscode-button-hoverBackground); }
 	.error-banner { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 4px 8px; }
@@ -92,6 +105,10 @@ const commitTargetEl = document.getElementById('commit-target') as HTMLSelectEle
 const commitMessageEl = document.getElementById('commit-message') as HTMLTextAreaElement;
 const amendCheckboxEl = document.getElementById('amend-checkbox') as HTMLInputElement;
 const commitButtonEl = document.getElementById('commit-button') as HTMLButtonElement;
+const commitPushButtonEl = document.getElementById('commit-push-button') as HTMLButtonElement;
+document.getElementById('refresh-files')!.addEventListener('click', () => post({ type: 'refresh' }));
+document.getElementById('expand-all')!.addEventListener('click', () => { collapsedGroups.clear(); renderFileList(); });
+document.getElementById('collapse-all')!.addEventListener('click', () => { for (const group of buildGroups()) collapsedGroups.add(group.id); renderFileList(); });
 
 amendCheckboxEl.addEventListener('change', () => {
 	if (amendCheckboxEl.checked && commitMessageEl.value.trim().length === 0) {
@@ -99,20 +116,22 @@ amendCheckboxEl.addEventListener('change', () => {
 	}
 });
 
-commitButtonEl.addEventListener('click', () => {
+function submitCommit(push: boolean): void {
 	const message = commitMessageEl.value;
 	if (message.trim().length === 0 && !amendCheckboxEl.checked) {
 		return;
 	}
 	const amend = amendCheckboxEl.checked;
 	if (commitTargetEl.value === 'index') {
-		post({ type: 'commit', message, amend });
+		post({ type: push ? 'commitAndPush' : 'commit', message, amend });
 	} else {
-		post({ type: 'commitChangelist', changelistId: commitTargetEl.value, message, amend });
+		post({ type: push ? 'commitChangelistAndPush' : 'commitChangelist', changelistId: commitTargetEl.value, message, amend });
 	}
 	commitMessageEl.value = '';
 	amendCheckboxEl.checked = false;
-});
+}
+commitButtonEl.addEventListener('click', () => submitCommit(false));
+commitPushButtonEl.addEventListener('click', () => submitCommit(true));
 
 function renderCommitTargetOptions(): void {
 	const previous = commitTargetEl.value;
@@ -120,7 +139,7 @@ function renderCommitTargetOptions(): void {
 
 	const indexOption = document.createElement('option');
 	indexOption.value = 'index';
-	indexOption.textContent = 'All Staged Changes';
+	indexOption.textContent = text('All Staged Changes', '마지막 커밋');
 	commitTargetEl.appendChild(indexOption);
 
 	for (const changelist of changelists) {
@@ -246,7 +265,7 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 	item.addEventListener('click', () => {
 		selectedFileUri = file.uri;
 		renderFileList();
-		post({ type: 'selectFile', uri: file.uri });
+		post({ type: 'openFileDiff', uri: file.uri });
 	});
 
 	return item;
@@ -323,7 +342,7 @@ function renderGroupHeader(group: RenderGroup): HTMLElement {
 
 	const count = document.createElement('span');
 	count.className = 'count';
-	count.textContent = `${group.files.length} file${group.files.length === 1 ? '' : 's'}`;
+	count.textContent = ko ? `${group.files.length}개 파일` : `${group.files.length} file${group.files.length === 1 ? '' : 's'}`;
 	header.appendChild(count);
 
 	if (group.changelistId && !group.isDefault) {

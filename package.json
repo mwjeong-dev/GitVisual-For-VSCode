@@ -1,7 +1,7 @@
 {
   "name": "pycharm-git-tools",
-  "displayName": "PyCharm Git Tools",
-  "description": "PyCharm-style git tooling for VS Code: commit panel with hunk staging, changelists, commit graph, inline blame, and line-range history.",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.0.1",
   "publisher": "local-dev",
   "private": true,
@@ -20,14 +20,14 @@
       "activitybar": [
         {
           "id": "gitToolsActivityBar",
-          "title": "Git Tools",
+          "title": "%view.gitTools%",
           "icon": "media/commit.svg"
         }
       ],
       "panel": [
         {
           "id": "gitToolsPanel",
-          "title": "Git Graph",
+          "title": "%view.gitGraph%",
           "icon": "media/graph.svg"
         }
       ]
@@ -36,19 +36,19 @@
       "gitToolsActivityBar": [
         {
           "id": "gitTools.branchesView",
-          "name": "Branches",
+          "name": "%view.branches%",
           "type": "webview"
         },
         {
           "id": "gitTools.commitPanel",
-          "name": "Commit",
+          "name": "%view.commit%",
           "type": "webview"
         }
       ],
       "gitToolsPanel": [
         {
           "id": "gitTools.graphView",
-          "name": "Graph",
+          "name": "%view.graph%",
           "type": "webview"
         }
       ]
@@ -62,6 +62,16 @@
         "command": "gitTools.refreshGraph",
         "title": "Refresh Graph",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "gitTools.toggleBlame",
+        "title": "%command.toggleBlame%",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "gitTools.showLineHistory",
+        "title": "%command.lineHistory%",
+        "icon": "$(history)"
       }
     ],
     "menus": {
@@ -70,6 +80,25 @@
           "command": "gitTools.refreshGraph",
           "when": "view == gitTools.graphView",
           "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "gitTools.toggleBlame",
+          "when": "editorLangId != '' && resourceScheme == file",
+          "group": "navigation@20"
+        },
+        {
+          "command": "gitTools.showLineHistory",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "navigation@21"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gitTools.showLineHistory",
+          "when": "resourceScheme == file",
+          "group": "git@20"
         }
       ]
     },

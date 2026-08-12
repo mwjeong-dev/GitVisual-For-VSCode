@@ -39,4 +39,15 @@ describe('layoutCommits', () => {
 		const { edges } = layoutCommits([commit('A', ['MISSING'])]);
 		expect(edges).toEqual([{ parentHash: 'MISSING', fromColumn: 0, fromRow: 0, toColumn: 0, toRow: undefined }]);
 	});
+
+	it('keeps disconnected branch tips in separate lanes in an all-branches graph', () => {
+		const { nodes } = layoutCommits([
+			commit('FEATURE', ['FEATURE_ROOT']),
+			commit('FEATURE_ROOT', []),
+			commit('MAIN', ['MAIN_ROOT']),
+			commit('MAIN_ROOT', []),
+		]);
+		const columnByHash = Object.fromEntries(nodes.map((node) => [node.hash, node.column]));
+		expect(columnByHash).toEqual({ FEATURE: 0, FEATURE_ROOT: 0, MAIN: 1, MAIN_ROOT: 1 });
+	});
 });

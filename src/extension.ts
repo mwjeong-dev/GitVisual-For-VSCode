@@ -6,6 +6,7 @@ import { ChangelistScmProvider } from './scm/changelistProvider';
 import { CommitPanelViewProvider } from './commitPanel/commitPanelViewProvider';
 import { GraphViewProvider } from './graph/graphViewProvider';
 import { BranchesViewProvider } from './branches/branchesViewProvider';
+import { EditorHistoryController } from './history/editorHistoryController';
 
 function allChangedUris(repo: Repository): string[] {
 	const { workingTreeChanges, indexChanges, untrackedChanges, mergeChanges } = repo.state;
@@ -39,11 +40,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(vscode.window.registerWebviewViewProvider(GraphViewProvider.viewType, graphViewProvider));
 	context.subscriptions.push(
 		vscode.commands.registerCommand('gitTools.refreshGraph', () => graphViewProvider.refresh()),
+		vscode.commands.registerCommand('gitTools.filterGraphBranch', (ref: string) => graphViewProvider.filterBranch(ref)),
 	);
 
 	const branchesViewProvider = new BranchesViewProvider(context.extensionUri, api);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(BranchesViewProvider.viewType, branchesViewProvider),
+	);
+
+	const editorHistory = new EditorHistoryController(api);
+	context.subscriptions.push(
+		editorHistory,
+		vscode.commands.registerCommand('gitTools.toggleBlame', () => editorHistory.toggleBlame()),
+		vscode.commands.registerCommand('gitTools.showLineHistory', () => editorHistory.showLineHistory()),
+		vscode.commands.registerCommand(
+			'gitTools.openBlameCommit',
+			(uri: string, hash: string, parent?: string) => editorHistory.openCommitFromCommand(uri, hash, parent),
+		),
 	);
 
 	const reconcileAll = async () => {
@@ -53,7 +66,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		changelistScmProvider.refresh();
 		await commitPanelProvider.refresh();
 		await graphViewProvider.refresh();
-		branchesViewProvider.refresh();
+		await branchesViewProvider.refresh();
 	};
 
 	const wireRepository = (repo: Repository) => {

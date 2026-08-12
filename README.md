@@ -10,8 +10,8 @@ PyCharm 스타일 git 도구를 VS Code로 이식하는 extension. 커밋 패널
 | 1 | 커밋 패널 + hunk 단위 부분 스테이징 + Amend | ✅ |
 | 2 | 전체 Changelist (다중 named changelist, 이동, 격리 커밋) | ✅ |
 | 3 | 커밋 로그 그래프 (하단 패널 도킹) | ✅ |
-| 4 | 인라인 Blame + hover + history 이동 | ⬜ |
-| 5 | 라인 범위 히스토리 (`git log -L`) | ⬜ |
+| 4 | 인라인 Blame + hover + history 이동 | ✅ |
+| 5 | 라인 범위 히스토리 (`git log -L`) | ✅ |
 
 ## 구현된 기능
 
@@ -26,6 +26,8 @@ PyCharm 스타일 git 도구를 VS Code로 이식하는 extension. 커밋 패널
   - 특정 changelist만 커밋할 때는 실제 index/working tree를 건드리지 않고 `GIT_INDEX_FILE` 스크래치 인덱스로
     별도 커밋을 만들어, 다른 changelist에 staged된 내용이 그대로 보존됩니다.
 - Amend 체크박스 (직전 커밋에 합치기, 메시지 비워두면 기존 메시지 유지)
+- 변경 파일 중심의 조밀한 목록 UI, 파일 클릭 시 VS Code diff 편집기에서 해당 파일 수정 내용 표시
+- 하단 고정 커밋 메시지 영역과 Commit / Commit and Push 동작
 
 ### 네이티브 SCM 뷰 ("Git Tools Changelists")
 - VS Code 기본 Source Control 뷰 옆에 changelist별 리소스 그룹으로 표시 (읽기/파일 열기 용도의 보조 뷰)
@@ -33,17 +35,33 @@ PyCharm 스타일 git 도구를 VS Code로 이식하는 extension. 커밋 패널
 ### 브랜치 트리 (액티비티바 "Git Tools" 안, Commit 패널 위)
 - Local / Remote / Tags 섹션으로 나눈 트리, `/`로 폴더처럼 그룹핑 (예: `feature/foo`)
 - 현재 브랜치는 ★ 아이콘 + 굵게 표시
-- 브랜치·태그 더블클릭 → 체크아웃 (`repository.checkout()`)
+- 브랜치·태그 행의 Checkout 버튼 또는 더블클릭 → 체크아웃 (`repository.checkout()`)
+- 상단 Fetch 버튼으로 모든 remote를 fetch/prune한 뒤 local/remote/tag ref를 다시 조회
+- 브랜치·태그 우클릭 메뉴에서 checkout, push, 선택 ref 기반 새 브랜치 생성, 태그 생성, local 브랜치·태그 삭제
+- 브랜치 도구 모음에서 선택 항목 업데이트, patch 파일 생성, local 브랜치·태그 삭제
+- 브랜치 또는 태그를 더블클릭하면 하단 Git Graph를 열고 해당 ref 필터 적용
 
 ### 커밋 그래프 (하단 패널 "Git Graph" 탭)
 - `git log --all --topo-order`를 직접 spawn해 모든 브랜치의 커밋 + 부모 해시 + ref 데코레이션을 조회
 - 브랜치/머지를 레인(컬럼)으로 배치하는 레이아웃 알고리즘을 직접 구현해 SVG로 렌더링 (Git Graph 확장은 커스텀 라이선스로 재사용이 금지되어 있어 참고만 하고 새로 작성)
-- 커밋 클릭 → 해당 커밋과 첫 부모 사이의 변경 파일들을 `git:` URI 기반으로 diff 탭으로 열기
+- 커밋 선택 후 변경 파일 클릭 → 해당 커밋과 첫 부모 사이의 `git:` URI diff 탭 열기
+- 커밋 목록을 제목·ref·작성자·날짜 열로 표시하고, 선택한 커밋의 변경 파일과 상세 정보를 우측 분할 패널에 표시
+- 커밋 검색 및 우측 변경 파일 목록에서 선택한 파일 하나의 diff 열기
+- 브랜치 필터를 선택하면 해당 ref에서 도달 가능한 커밋만 표시하고, 필터를 해제하면 모든 브랜치 그래프 표시
+- 전체 브랜치 그래프에서는 서로 독립적인 branch tip의 lane을 재사용하지 않아 브랜치별 선과 색상을 구분
+- 브랜치 이름 기반의 안정적인 lane 색상과 branch tip 강조 원 적용; feature 이력에서 master 등 다른 ref의 공통 이력에 도달하면 해당 지점부터 lane 색상 전환
+- VS Code 표시 언어가 한국어일 때 그래프·브랜치 메뉴와 명령 이름을 한국어로 표시
 - 우측 상단 새로고침 버튼, `gitTools.graph.maxCommits` 설정으로 로드할 커밋 수 조절 (기본 300, 페이지네이션은 아직 없음)
 - `vscode.window.createWebviewPanel`(에디터 탭)이 아닌 `viewsContainers.panel` + `WebviewViewProvider`로 구현해 Terminal/Output 옆 하단 패널에 도킹됨
 
 ### 디버그
 - `Git Tools: Log Changed Files` 커맨드 — Output 채널에 현재 변경 파일 + 소속 changelist 출력
+
+### 인라인 Blame과 라인 히스토리
+- 에디터 제목의 commit 아이콘 또는 `Git Tools: Toggle Inline Blame` 명령으로 라인 끝 blame 표시 전환
+- blame hover에서 작성자·날짜·커밋 메시지를 확인하고 현재 커밋 또는 이전 revision diff 열기
+- 라인 선택 후 에디터 제목/history 아이콘, 우클릭 메뉴 또는 `Git Tools: Show Line Range History` 명령 실행
+- `git log -L` 결과를 Quick Pick으로 탐색하고 선택한 커밋의 파일 diff 열기
 
 ## 개발 환경 설정
 
@@ -97,6 +115,9 @@ src/
   graph/
     graphViewProvider.ts            # 그래프 WebviewViewProvider (panel viewsContainer), 커밋 diff 열기
     logReader.ts                    # git log 직접 spawn + 파싱
+  history/
+    historyReader.ts               # blame porcelain / git log -L 실행과 파싱
+    editorHistoryController.ts     # 에디터 blame decoration, hover, line history UI
   branches/branchesViewProvider.ts  # 브랜치 트리 WebviewViewProvider
   shared/protocol/                  # extension host ↔ webview 공용 타입 (런타임 코드 없음)
 web/
@@ -115,3 +136,4 @@ test/                               # vitest 유닛 테스트 (diff 파서, 그�
 - `isStaged`는 "이 파일에 staged된 내용이 있는가"만 판단 (완전 staged vs 부분 staged는 구분하지 않음)
 - Amend + 특정 changelist 격리 커밋을 처음 커밋(HEAD 없음)에 대해 실행하는 극단적 케이스는 미처리
 - 그래프 뷰는 페이지네이션 없이 `maxCommits`개만 로드 (기본 300) — 그 이후 조상으로 이어지는 엣지는 그려지지 않음
+- `git log -L`의 Git 자체 제약에 따라 rename을 넘어선 라인 추적과 merge history 표현은 제한적임

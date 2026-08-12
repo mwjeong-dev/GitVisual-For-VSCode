@@ -5,39 +5,100 @@ import type {
 } from '../../src/shared/protocol/branches';
 
 const vscode = acquireVsCodeApi();
+const ko = navigator.language.toLowerCase().startsWith('ko');
+const text = (english: string, korean: string): string => ko ? korean : english;
 
 function post(message: BranchesToExtensionMessage): void {
 	vscode.postMessage(message);
 }
 
 let branches: BranchTreeItemDto[] = [];
+let selectedName: string | undefined;
+let selectedKind: BranchTreeItemDto['kind'] | undefined;
 const collapsedFolders = new Set<string>();
 
 const root = document.getElementById('root')!;
-root.innerHTML = `<div class="tree" id="tree"></div>`;
+root.innerHTML = `
+	<div class="branch-shell">
+		<nav class="action-rail">
+			<button id="new-branch" title="${text('New branch from HEAD', '현재 브랜치에서 새 브랜치 만들기')}"><svg viewBox="0 0 20 20"><path d="M10 3v14M3 10h14"/></svg></button>
+			<button id="fetch" title="${text('Fetch all remotes and prune deleted refs', '모든 원격 저장소를 Fetch하고 삭제된 ref를 정리합니다')}"><svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M13 7h3.5V3.5"/></svg></button>
+			<button id="update-selected" title="${text('Update selected branch', '선택 항목 업데이트')}"><svg viewBox="0 0 20 20"><path d="M3 6h13M13 3l3 3-3 3M17 14H4M7 11l-3 3 3 3"/></svg></button>
+			<button id="create-patch" title="${text('Create patch from selection', '선택 항목에서 패치 생성')}"><svg viewBox="0 0 20 20"><path d="M10 3v10M6 10l4 4 4-4M4 17h12"/></svg></button>
+			<button id="delete-selected" title="${text('Delete selected branch or tag', '선택한 브랜치 또는 태그 삭제')}"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 3h4l1 3H7l1-3ZM6 6l1 11h6l1-11M9 9v5M11 9v5"/></svg></button>
+			<button id="toggle-search" title="${text('Search branches', '브랜치 검색')}"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5"/><path d="m12.2 12.2 4.3 4.3"/></svg></button>
+		</nav>
+		<main class="branch-main">
+			<div class="search-box" id="search-box"><input id="branch-search" placeholder="${text('Search branches and tags', '브랜치 및 태그 검색')}"></div>
+			<div class="head-row" id="head-row"></div>
+			<div class="loading" id="loading"></div>
+			<div class="tree" id="tree"></div>
+		</main>
+	</div>
+`;
 
 const style = document.createElement('style');
 style.textContent = `
-	html, body { height: 100%; overflow-x: hidden; }
-	body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); margin: 0; padding: 4px 0; }
-	.tree { overflow-y: auto; }
-	.section-label { padding: 4px 8px 2px; font-weight: 600; opacity: 0.7; font-size: 0.85em; text-transform: uppercase; }
-	.row { display: flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+	html, body, #root { height: 100%; overflow: hidden; }
+	body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-sideBar-background); margin: 0; }
+	.branch-shell { display: grid; grid-template-columns: 28px minmax(0, 1fr); height: 100%; min-height: 0; }
+	.action-rail { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 7px 0; border-right: 1px solid var(--vscode-panel-border); }
+	.action-rail button { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; margin: 0; padding: 0; border: 0; color: var(--vscode-icon-foreground); background: transparent; cursor: pointer; border-radius: 3px; }
+	.action-rail button svg { display: block; width: 18px; height: 18px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+	.action-rail button:hover { background: var(--vscode-toolbar-hoverBackground); }
+	.branch-main { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; padding: 7px 8px 0; overflow: hidden; }
+	.search-box { display: none; margin-bottom: 6px; }
+	.search-box.visible { display: block; }
+	.search-box input { width: 100%; padding: 5px 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); outline: 0; }
+	.search-box input:focus { border-color: var(--vscode-focusBorder); }
+	.head-row { flex: 0 0 auto; padding: 8px 12px; margin-bottom: 5px; border-radius: 5px; background: var(--vscode-list-inactiveSelectionBackground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.loading { min-height: 18px; opacity: 0.7; font-size: 0.85em; }
+	.tree { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-bottom: 12px; }
+	.section-label { padding: 5px 5px 3px; font-weight: 600; font-size: 13px; cursor: pointer; }
+	.row { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 2px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 	.row:hover { background: var(--vscode-list-hoverBackground); }
+	.row.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
 	.row.current { font-weight: 600; color: var(--vscode-gitDecoration-addedResourceForeground); }
 	.row .chevron { flex: 0 0 auto; width: 1em; text-align: center; opacity: 0.7; }
 	.row .icon { flex: 0 0 auto; opacity: 0.8; }
 	.row .name { overflow: hidden; text-overflow: ellipsis; }
+	.row .checkout { display: none; margin-left: auto; padding: 1px 6px; }
+	.row:hover .checkout, .row:focus-within .checkout { display: inline-block; }
 	.error-banner { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 4px 8px; }
+	.context-menu { position: fixed; z-index: 20; min-width: 210px; padding: 4px 0; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 4px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, var(--vscode-editor-background)); box-shadow: 0 3px 10px #0007; }
+	.context-item { padding: 6px 22px; cursor: default; white-space: nowrap; }
+	.context-item:hover { color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground)); background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground)); }
+	.context-separator { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border)); }
 `;
 document.head.appendChild(style);
 
 const treeEl = document.getElementById('tree')!;
+const loadingEl = document.getElementById('loading')!;
+const headEl = document.getElementById('head-row')!;
+const searchBoxEl = document.getElementById('search-box')!;
+const searchEl = document.getElementById('branch-search') as HTMLInputElement;
+document.getElementById('fetch')!.addEventListener('click', () => post({ type: 'fetch' }));
+document.getElementById('new-branch')!.addEventListener('click', () => post({ type: 'createBranch', from: branches.find((branch) => branch.isCurrent)?.name ?? 'HEAD' }));
+function requireSelection(): { name: string; kind: BranchTreeItemDto['kind'] } | undefined {
+	if (selectedName && selectedKind) return { name: selectedName, kind: selectedKind };
+	showError(text('Select a branch or tag first.', '먼저 브랜치 또는 태그를 선택하세요.'));
+	return undefined;
+}
+document.getElementById('update-selected')!.addEventListener('click', () => { const value = requireSelection(); if (value) post({ type: 'updateRef', ...value }); });
+document.getElementById('create-patch')!.addEventListener('click', () => { const value = requireSelection(); if (value) post({ type: 'createPatch', ...value }); });
+document.getElementById('delete-selected')!.addEventListener('click', () => {
+	const value = requireSelection();
+	if (value && value.kind !== 'remote') post({ type: 'deleteRef', kind: value.kind, name: value.name });
+	else if (value) showError(text('Remote branches cannot be deleted here.', '원격 브랜치는 여기서 삭제할 수 없습니다.'));
+});
+document.getElementById('toggle-search')!.addEventListener('click', () => { searchBoxEl.classList.toggle('visible'); if (searchBoxEl.classList.contains('visible')) searchEl.focus(); });
+searchEl.addEventListener('input', render);
 
 interface TreeNode {
 	readonly name: string;
 	fullName?: string;
 	isCurrent?: boolean;
+	kind?: BranchTreeItemDto['kind'];
 	readonly children: Map<string, TreeNode>;
 }
 
@@ -54,20 +115,22 @@ function insert(sectionRoot: TreeNode, branch: BranchTreeItemDto): void {
 		if (i === parts.length - 1) {
 			node.fullName = branch.name;
 			node.isCurrent = branch.isCurrent;
+			node.kind = branch.kind;
 		}
 	});
 }
 
 function renderNode(node: TreeNode, path: string, depth: number, container: HTMLElement): void {
 	const isLeaf = node.fullName !== undefined;
+	const hasChildren = node.children.size > 0;
 
 	const row = document.createElement('div');
-	row.className = 'row' + (node.isCurrent ? ' current' : '');
+	row.className = 'row' + (node.isCurrent ? ' current' : '') + (node.fullName === selectedName ? ' selected' : '');
 	row.style.paddingLeft = `${8 + depth * 14}px`;
 
 	const chevron = document.createElement('span');
 	chevron.className = 'chevron';
-	chevron.textContent = isLeaf ? '' : collapsedFolders.has(path) ? '▸' : '▾';
+	chevron.textContent = !hasChildren ? '' : collapsedFolders.has(path) ? '▸' : '▾';
 	row.appendChild(chevron);
 
 	const icon = document.createElement('span');
@@ -81,9 +144,25 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 	row.appendChild(name);
 
 	if (isLeaf) {
-		row.title = `${node.fullName}\nDouble-click to check out`;
-		row.addEventListener('dblclick', () => post({ type: 'checkout', name: node.fullName! }));
-	} else {
+		row.addEventListener('click', (event) => { event.stopPropagation(); selectedName = node.fullName; selectedKind = node.kind; render(); });
+		row.title = `${node.fullName}\n${text('Double-click to filter Git Graph', '더블클릭하면 Git 그래프에 이 브랜치만 표시합니다')}`;
+		row.addEventListener('dblclick', () => post({ type: 'filterGraph', name: node.fullName! }));
+		row.addEventListener('contextmenu', (event) => {
+			event.preventDefault();
+			showContextMenu(event.clientX, event.clientY, node.fullName!, node.kind!, Boolean(node.isCurrent));
+		});
+		if (!node.isCurrent) {
+			const checkout = document.createElement('button');
+			checkout.className = 'checkout';
+			checkout.textContent = text('Checkout', '체크아웃');
+			checkout.addEventListener('click', (event) => {
+				event.stopPropagation();
+				post({ type: 'checkout', name: node.fullName!, kind: node.kind });
+			});
+			row.appendChild(checkout);
+		}
+	}
+	if (hasChildren) {
 		row.addEventListener('click', () => {
 			if (collapsedFolders.has(path)) {
 				collapsedFolders.delete(path);
@@ -96,30 +175,71 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 
 	container.appendChild(row);
 
-	if (!isLeaf && !collapsedFolders.has(path)) {
+	if (hasChildren && !collapsedFolders.has(path)) {
 		for (const child of node.children.values()) {
 			renderNode(child, `${path}/${child.name}`, depth + 1, container);
 		}
 	}
 }
 
+function showContextMenu(x: number, y: number, name: string, kind: BranchTreeItemDto['kind'], isCurrent: boolean): void {
+	document.querySelector('.context-menu')?.remove();
+	const menu = document.createElement('div');
+	menu.className = 'context-menu';
+	const addItem = (label: string, action: () => void): void => {
+		const item = document.createElement('div');
+		item.className = 'context-item';
+		item.textContent = label;
+		item.addEventListener('click', () => { menu.remove(); action(); });
+		menu.appendChild(item);
+	};
+	if (!isCurrent) addItem(text('Checkout', '체크아웃'), () => post({ type: 'checkout', name, kind }));
+	if (kind === 'local') addItem(text('Push…', '푸시…'), () => post({ type: 'pushBranch', name }));
+	const suggestedName = kind === 'remote' ? name.split('/').slice(1).join('/') : undefined;
+	addItem(text('New Branch from Here…', '여기에서 새 브랜치 만들기…'), () => post({ type: 'createBranch', from: name, suggestedName }));
+	addItem(text('Create Tag Here…', '여기에 태그 만들기…'), () => post({ type: 'createTag', ref: name }));
+	if ((kind === 'local' && !isCurrent) || kind === 'tag') {
+		const separator = document.createElement('div'); separator.className = 'context-separator'; menu.appendChild(separator);
+		addItem(kind === 'tag' ? text('Delete Tag…', '태그 삭제…') : text('Delete Branch…', '브랜치 삭제…'), () => post({ type: 'deleteRef', kind, name }));
+	}
+	document.body.appendChild(menu);
+	const rect = menu.getBoundingClientRect();
+	menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - rect.width - 4))}px`;
+	menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
+}
+
+function closeContextMenu(): void { document.querySelector('.context-menu')?.remove(); }
+document.addEventListener('pointerdown', (event) => {
+	const menu = document.querySelector('.context-menu');
+	if (menu && !menu.contains(event.target as Node)) closeContextMenu();
+}, true);
+document.addEventListener('contextmenu', (event) => {
+	if (!(event.target as Element).closest('.row')) closeContextMenu();
+});
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeContextMenu(); });
+window.addEventListener('scroll', closeContextMenu, true);
+window.addEventListener('blur', closeContextMenu);
+
 const SECTIONS: { kind: BranchTreeItemDto['kind']; label: string }[] = [
-	{ kind: 'local', label: 'Local' },
-	{ kind: 'remote', label: 'Remote' },
-	{ kind: 'tag', label: 'Tags' },
+	{ kind: 'local', label: text('Local', '로컬') },
+	{ kind: 'remote', label: text('Remote', '원격') },
+	{ kind: 'tag', label: text('Tags', '태그') },
 ];
 
 function render(): void {
 	treeEl.innerHTML = '';
+	const current = branches.find((branch) => branch.isCurrent);
+	headEl.textContent = current ? `★  HEAD (${text('current branch', '현재 브랜치')}): ${current.name}` : `HEAD (${text('detached or unavailable', '분리됨 또는 확인 불가')})`;
+	const query = searchEl.value.trim().toLocaleLowerCase();
 	for (const section of SECTIONS) {
-		const items = branches.filter((b) => b.kind === section.kind);
+		const items = branches.filter((b) => b.kind === section.kind && (!query || b.name.toLocaleLowerCase().includes(query)));
 		if (items.length === 0) {
 			continue;
 		}
 
 		const label = document.createElement('div');
 		label.className = 'section-label';
-		label.textContent = section.label;
+		label.textContent = `⌄  ${section.label}`;
 		treeEl.appendChild(label);
 
 		const sectionRoot: TreeNode = { name: '', children: new Map() };
@@ -144,6 +264,9 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToBranchesMessa
 		case 'branches':
 			branches = message.branches;
 			render();
+			break;
+		case 'busy':
+			loadingEl.textContent = message.busy ? text('Loading…', '불러오는 중…') : '';
 			break;
 		case 'error':
 			showError(message.message);

@@ -82,6 +82,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 				case 'selectFile':
 					await this.sendDiff(message.uri);
 					break;
+				case 'openFileDiff':
+					await this.openFileDiff(message.uri);
+					break;
 				case 'setSelection':
 					await this.applySelection(message.uri, message.selectedKeys);
 					break;
@@ -94,8 +97,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 				case 'commit':
 					await this.commit(message.message, message.amend);
 					break;
+				case 'commitAndPush':
+					await this.commit(message.message, message.amend);
+					await this.repo?.push();
+					break;
 				case 'commitChangelist':
 					await this.commitChangelist(message.changelistId, message.message, message.amend);
+					break;
+				case 'commitChangelistAndPush':
+					await this.commitChangelist(message.changelistId, message.message, message.amend);
+					await this.repo?.push();
 					break;
 				case 'createChangelist':
 					await this.changelistStore.create(message.name);
@@ -136,6 +147,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		const { hunks, headLines } = await getDiffForFile(repo, uri, info);
 		this.fileStateByUri.set(uriString, { info, hunks, headLines });
 		this.post({ type: 'diff', uri: uriString, hunks });
+	}
+
+	private async openFileDiff(uriString: string): Promise<void> {
+		const repo = this.repo;
+		if (!repo) return;
+		const uri = vscode.Uri.parse(uriString);
+		const info = listChangedFiles(repo, this.changelistStore).find((file) => file.uri === uriString);
+		if (!info) return;
+		if (info.isUntracked) {
+			await vscode.window.showTextDocument(uri, { preview: true });
+			return;
+		}
+		const left = this.api.toGitUri(uri, 'HEAD');
+		await vscode.commands.executeCommand('vscode.diff', left, uri, `${info.relPath} (Working Tree)`);
 	}
 
 	private async applySelection(uriString: string, selectedKeys: readonly string[]): Promise<void> {
