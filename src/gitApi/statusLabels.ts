@@ -17,5 +17,5 @@ export function statusLabel(status: number): string {
 }
 
 export function isUntrackedStatus(status: number): boolean {
-	return status === GitStatus.UNTRACKED || status === GitStatus.INTENT_TO_ADD;
+	return status === GitStatus.UNTRACKED || status === GitStatus.INTENT_TO_ADD || status === GitStatus.INDEX_ADDED;
 }

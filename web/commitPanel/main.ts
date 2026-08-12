@@ -22,6 +22,8 @@ let selectedKeys = new Set<string>();
 let lastCommitMessage = '';
 let renamingChangelistId: string | undefined;
 let creatingChangelist = false;
+const selectedFileUris = new Set<string>();
+const knownFileUris = new Set<string>();
 
 const root = document.getElementById('root')!;
 root.innerHTML = `
@@ -54,7 +56,10 @@ style.textContent = `
 
 	.group-header { display: flex; align-items: center; gap: 5px; min-height: 28px; padding: 2px 9px; cursor: pointer; }
 	.group-header:hover { background: var(--vscode-list-hoverBackground); }
-	.group-header .chevron { flex: 0 0 auto; width: 1em; text-align: center; opacity: 0.8; }
+	.group-header .chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: 0.9; }
+	.group-header .chevron svg { display: block; width: 16px; height: 16px; }
+	.group-header .chevron.collapsed svg { transform: rotate(-90deg); }
+	.group-files.collapsed { display: none; }
 	.group-header input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
 	.group-header .group-label { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.group-header .group-label input { width: 100%; box-sizing: border-box; }
@@ -122,10 +127,14 @@ function submitCommit(push: boolean): void {
 		return;
 	}
 	const amend = amendCheckboxEl.checked;
+	const uris = [...selectedFileUris];
+	if (uris.length === 0) {
+		return;
+	}
 	if (commitTargetEl.value === 'index') {
-		post({ type: push ? 'commitAndPush' : 'commit', message, amend });
+		post({ type: push ? 'commitAndPush' : 'commit', uris, message, amend });
 	} else {
-		post({ type: push ? 'commitChangelistAndPush' : 'commitChangelist', changelistId: commitTargetEl.value, message, amend });
+		post({ type: push ? 'commitChangelistAndPush' : 'commitChangelist', changelistId: commitTargetEl.value, uris, message, amend });
 	}
 	commitMessageEl.value = '';
 	amendCheckboxEl.checked = false;
@@ -139,7 +148,7 @@ function renderCommitTargetOptions(): void {
 
 	const indexOption = document.createElement('option');
 	indexOption.value = 'index';
-	indexOption.textContent = text('All Staged Changes', '마지막 커밋');
+	indexOption.textContent = text('All Selected Changes', '선택한 모든 변경');
 	commitTargetEl.appendChild(indexOption);
 
 	for (const changelist of changelists) {
@@ -167,20 +176,6 @@ function allLineKeys(): Set<string> {
 		}),
 	);
 	return keys;
-}
-
-/**
- * Stage/unstage acts on the whole file, but if that file's diff happens to
- * be open, its line checkboxes are separate render state (`selectedKeys`)
- * that doesn't otherwise know the file's staged status just changed —
- * without this they'd stay checked after unstaging the whole file/group.
- */
-function syncDiffSelectionIfOpen(uri: string, staged: boolean): void {
-	if (uri !== selectedFileUri) {
-		return;
-	}
-	selectedKeys = staged ? allLineKeys() : new Set();
-	renderDiff();
 }
 
 function splitPath(relPath: string): { name: string; dir: string } {
@@ -211,6 +206,19 @@ function buildGroups(): RenderGroup[] {
 	return groups;
 }
 
+function updateGroupCheckbox(fileContainer: HTMLElement): void {
+	const groupCheckbox = fileContainer.previousElementSibling?.querySelector<HTMLInputElement>(
+		'.group-header > input[type="checkbox"]',
+	);
+	if (!groupCheckbox) {
+		return;
+	}
+	const fileCheckboxes = [...fileContainer.querySelectorAll<HTMLInputElement>('.file-item > input[type="checkbox"]')];
+	const checkedCount = fileCheckboxes.filter((checkbox) => checkbox.checked).length;
+	groupCheckbox.checked = fileCheckboxes.length > 0 && checkedCount === fileCheckboxes.length;
+	groupCheckbox.indeterminate = checkedCount > 0 && checkedCount < fileCheckboxes.length;
+}
+
 function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElement {
 	const { name, dir } = splitPath(file.relPath);
 
@@ -220,11 +228,18 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 
 	const checkbox = document.createElement('input');
 	checkbox.type = 'checkbox';
-	checkbox.checked = file.isStaged;
+	checkbox.checked = selectedFileUris.has(file.uri);
 	checkbox.addEventListener('click', (e) => e.stopPropagation());
 	checkbox.addEventListener('change', () => {
-		post({ type: checkbox.checked ? 'stageFile' : 'unstageFile', uri: file.uri });
-		syncDiffSelectionIfOpen(file.uri, checkbox.checked);
+		if (checkbox.checked) {
+			selectedFileUris.add(file.uri);
+		} else {
+			selectedFileUris.delete(file.uri);
+		}
+		const fileContainer = item.parentElement;
+		if (fileContainer) {
+			updateGroupCheckbox(fileContainer);
+		}
 	});
 	item.appendChild(checkbox);
 
@@ -280,28 +295,34 @@ function commitRename(changelistId: string, name: string): void {
 	renderFileList();
 }
 
-function renderGroupHeader(group: RenderGroup): HTMLElement {
+function renderGroupHeader(group: RenderGroup, fileContainer: HTMLElement): HTMLElement {
 	const header = document.createElement('div');
 	header.className = 'group-header';
 
 	const chevron = document.createElement('span');
 	chevron.className = 'chevron';
-	chevron.textContent = collapsedGroups.has(group.id) ? '▸' : '▾';
+	if (collapsedGroups.has(group.id)) {
+		chevron.classList.add('collapsed');
+	}
+	chevron.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.97 5.72a.75.75 0 0 1 1.06 0L8 8.69l2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg>';
 	header.appendChild(chevron);
 
 	const checkbox = document.createElement('input');
 	checkbox.type = 'checkbox';
-	checkbox.checked = group.files.length > 0 && group.files.every((f) => f.isStaged);
-	checkbox.indeterminate = !checkbox.checked && group.files.some((f) => f.isStaged);
+	checkbox.checked = group.files.length > 0 && group.files.every((file) => selectedFileUris.has(file.uri));
+	checkbox.indeterminate = !checkbox.checked && group.files.some((file) => selectedFileUris.has(file.uri));
 	checkbox.addEventListener('click', (e) => e.stopPropagation());
 	checkbox.addEventListener('change', () => {
+		// File inclusion is local UI state; Git is touched only when committing.
+		for (const fileCheckbox of fileContainer.querySelectorAll<HTMLInputElement>('.file-item > input[type="checkbox"]')) {
+			fileCheckbox.checked = checkbox.checked;
+		}
+		checkbox.indeterminate = false;
 		for (const file of group.files) {
-			if (checkbox.checked && !file.isStaged) {
-				post({ type: 'stageFile', uri: file.uri });
-				syncDiffSelectionIfOpen(file.uri, true);
-			} else if (!checkbox.checked && file.isStaged) {
-				post({ type: 'unstageFile', uri: file.uri });
-				syncDiffSelectionIfOpen(file.uri, false);
+			if (checkbox.checked) {
+				selectedFileUris.add(file.uri);
+			} else {
+				selectedFileUris.delete(file.uri);
 			}
 		}
 	});
@@ -358,12 +379,14 @@ function renderGroupHeader(group: RenderGroup): HTMLElement {
 	}
 
 	header.addEventListener('click', () => {
-		if (collapsedGroups.has(group.id)) {
+		const isCollapsed = collapsedGroups.has(group.id);
+		if (isCollapsed) {
 			collapsedGroups.delete(group.id);
 		} else {
 			collapsedGroups.add(group.id);
 		}
-		renderFileList();
+		chevron.classList.toggle('collapsed', !isCollapsed);
+		fileContainer.classList.toggle('collapsed', !isCollapsed);
 	});
 
 	return header;
@@ -411,12 +434,16 @@ const collapsedGroups = new Set<string>();
 function renderFileList(): void {
 	fileListEl.innerHTML = '';
 	for (const group of buildGroups()) {
-		fileListEl.appendChild(renderGroupHeader(group));
-		if (!collapsedGroups.has(group.id)) {
-			for (const file of group.files) {
-				fileListEl.appendChild(renderFileItem(file, group.changelistId !== undefined));
-			}
+		const fileContainer = document.createElement('div');
+		fileContainer.className = 'group-files';
+		if (collapsedGroups.has(group.id)) {
+			fileContainer.classList.add('collapsed');
 		}
+		for (const file of group.files) {
+			fileContainer.appendChild(renderFileItem(file, group.changelistId !== undefined));
+		}
+		fileListEl.appendChild(renderGroupHeader(group, fileContainer));
+		fileListEl.appendChild(fileContainer);
 	}
 	fileListEl.appendChild(renderNewChangelistRow());
 }
@@ -483,6 +510,19 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessag
 	switch (message.type) {
 		case 'fileList':
 			files = message.files;
+			const currentUris = new Set(files.map((file) => file.uri));
+			for (const file of files) {
+				if (!knownFileUris.has(file.uri)) {
+					selectedFileUris.add(file.uri);
+				}
+				knownFileUris.add(file.uri);
+			}
+			for (const uri of [...knownFileUris]) {
+				if (!currentUris.has(uri)) {
+					knownFileUris.delete(uri);
+					selectedFileUris.delete(uri);
+				}
+			}
 			changelists = message.changelists;
 			lastCommitMessage = message.lastCommitMessage ?? '';
 			if (selectedFileUri && !files.some((f) => f.uri === selectedFileUri)) {

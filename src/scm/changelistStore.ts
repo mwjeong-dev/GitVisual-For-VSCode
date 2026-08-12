@@ -10,6 +10,7 @@ export interface Changelist {
 
 const DEFAULT_CHANGELIST_ID = 'default';
 const STORAGE_KEY = 'gitTools.changelists';
+const UNVERSIONED_STORAGE_KEY = 'gitTools.unversionedUris';
 
 /**
  * Owns changelist assignment data — the single source of truth both the
@@ -22,9 +23,11 @@ export class ChangelistStore implements vscode.Disposable {
 	readonly onDidChangeChangelists = this._onDidChangeChangelists.event;
 
 	private changelists: Changelist[];
+	private unversionedUris: Set<string>;
 
 	constructor(private readonly workspaceState: vscode.Memento) {
 		this.changelists = this.load();
+		this.unversionedUris = new Set(workspaceState.get<string[]>(UNVERSIONED_STORAGE_KEY) ?? []);
 	}
 
 	private load(): Changelist[] {
@@ -36,7 +39,10 @@ export class ChangelistStore implements vscode.Disposable {
 	}
 
 	private async persist(): Promise<void> {
-		await this.workspaceState.update(STORAGE_KEY, this.changelists);
+		await Promise.all([
+			this.workspaceState.update(STORAGE_KEY, this.changelists),
+			this.workspaceState.update(UNVERSIONED_STORAGE_KEY, [...this.unversionedUris]),
+		]);
 		this._onDidChangeChangelists.fire();
 	}
 
@@ -58,6 +64,30 @@ export class ChangelistStore implements vscode.Disposable {
 
 	findByFileUri(uriString: string): Changelist | undefined {
 		return this.changelists.find((c) => c.fileUris.includes(uriString));
+	}
+
+	isUnversioned(uriString: string): boolean {
+		return this.unversionedUris.has(uriString);
+	}
+
+	async rememberUnversioned(uriStrings: readonly string[]): Promise<void> {
+		const before = this.unversionedUris.size;
+		for (const uri of uriStrings) {
+			this.unversionedUris.add(uri);
+		}
+		if (this.unversionedUris.size !== before) {
+			await this.persist();
+		}
+	}
+
+	async forgetUnversioned(uriStrings: readonly string[]): Promise<void> {
+		let changed = false;
+		for (const uri of uriStrings) {
+			changed = this.unversionedUris.delete(uri) || changed;
+		}
+		if (changed) {
+			await this.persist();
+		}
 	}
 
 	async create(name: string): Promise<Changelist> {
@@ -108,9 +138,16 @@ export class ChangelistStore implements vscode.Disposable {
 	 * in the default changelist, files no longer changed (committed,
 	 * reverted, deleted) are dropped from whichever changelist held them.
 	 */
-	async reconcile(currentUriStrings: readonly string[]): Promise<void> {
+	async reconcile(currentUriStrings: readonly string[], currentlyUntrackedUris: readonly string[] = []): Promise<void> {
 		const currentSet = new Set(currentUriStrings);
 		let changed = false;
+		const previousUnversionedSize = this.unversionedUris.size;
+		for (const uri of currentlyUntrackedUris) {
+			this.unversionedUris.add(uri);
+		}
+		if (this.unversionedUris.size !== previousUnversionedSize) {
+			changed = true;
+		}
 
 		for (const changelist of this.changelists) {
 			const before = changelist.fileUris.length;

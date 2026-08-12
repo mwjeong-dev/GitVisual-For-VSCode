@@ -3,8 +3,8 @@ import type { API, Repository } from '../gitApi/git.d';
 import type { DiffHunk } from '../shared/protocol/diff';
 import type { ChangedFileDto, ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../shared/protocol/commitPanel';
 import { getDiffForFile, listChangedFiles } from './diffModel';
-import { stageWholeFile, unstageWholeFile, writeSelectedLinesToIndex } from '../scm/staging';
-import { commitChangelistIsolated, commitIndex } from '../scm/commitService';
+import { writeSelectedLinesToIndex } from '../scm/staging';
+import { commitFilesIsolated } from '../scm/commitService';
 import { ChangelistStore } from '../scm/changelistStore';
 
 interface FileState {
@@ -18,6 +18,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
 	private view: vscode.WebviewView | undefined;
 	private readonly fileStateByUri = new Map<string, FileState>();
+	private readonly partiallySelectedUris = new Set<string>();
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -61,6 +62,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		for (const uri of [...this.fileStateByUri.keys()]) {
 			if (!currentUris.has(uri)) {
 				this.fileStateByUri.delete(uri);
+				this.partiallySelectedUris.delete(uri);
 			}
 		}
 		const changelists = this.changelistStore
@@ -88,24 +90,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 				case 'setSelection':
 					await this.applySelection(message.uri, message.selectedKeys);
 					break;
-				case 'stageFile':
-					await this.stageFile(message.uri);
-					break;
-				case 'unstageFile':
-					await this.unstageFile(message.uri);
-					break;
 				case 'commit':
-					await this.commit(message.message, message.amend);
+					await this.commit(message.uris, message.message, message.amend);
 					break;
 				case 'commitAndPush':
-					await this.commit(message.message, message.amend);
+					await this.commit(message.uris, message.message, message.amend);
 					await this.repo?.push();
 					break;
 				case 'commitChangelist':
-					await this.commitChangelist(message.changelistId, message.message, message.amend);
+					await this.commitChangelist(message.changelistId, message.uris, message.message, message.amend);
 					break;
 				case 'commitChangelistAndPush':
-					await this.commitChangelist(message.changelistId, message.message, message.amend);
+					await this.commitChangelist(message.changelistId, message.uris, message.message, message.amend);
 					await this.repo?.push();
 					break;
 				case 'createChangelist':
@@ -174,22 +170,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		await writeSelectedLinesToIndex(repo, uri, state.headLines, state.hunks, (hunkIndex, lineIndex) =>
 			selected.has(`${hunkIndex}:${lineIndex}`),
 		);
-	}
-
-	private async stageFile(uriString: string): Promise<void> {
-		const repo = this.repo;
-		if (!repo) {
-			return;
-		}
-		await stageWholeFile(repo, vscode.Uri.parse(uriString));
-	}
-
-	private async unstageFile(uriString: string): Promise<void> {
-		const repo = this.repo;
-		if (!repo) {
-			return;
-		}
-		await unstageWholeFile(repo, vscode.Uri.parse(uriString));
+		this.partiallySelectedUris.add(uriString);
 	}
 
 	/** Amending with a blank message keeps the amended commit's original message. */
@@ -208,7 +189,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		return previous.length > 0 ? previous : undefined;
 	}
 
-	private async commit(message: string, amend: boolean): Promise<void> {
+	private async commit(uriStrings: readonly string[], message: string, amend: boolean): Promise<void> {
 		const repo = this.repo;
 		if (!repo) {
 			return;
@@ -217,11 +198,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		if (!finalMessage) {
 			return;
 		}
-		await commitIndex(repo, finalMessage, amend);
+		await commitFilesIsolated(repo, uriStrings, finalMessage, amend, this.partiallySelectedUris);
+		for (const uri of uriStrings) {
+			this.partiallySelectedUris.delete(uri);
+		}
+		await this.changelistStore.forgetUnversioned(uriStrings);
 		await this.sendFileList();
 	}
 
-	private async commitChangelist(changelistId: string, message: string, amend: boolean): Promise<void> {
+	private async commitChangelist(changelistId: string, uriStrings: readonly string[], message: string, amend: boolean): Promise<void> {
 		const repo = this.repo;
 		const changelist = this.changelistStore.get(changelistId);
 		if (!repo || !changelist) {
@@ -231,7 +216,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		if (!finalMessage) {
 			return;
 		}
-		await commitChangelistIsolated(repo, changelist, finalMessage, amend);
+		const changelistUris = new Set(changelist.fileUris);
+		const committedUris = uriStrings.filter((uri) => changelistUris.has(uri));
+		await commitFilesIsolated(repo, committedUris, finalMessage, amend, this.partiallySelectedUris);
+		for (const uri of committedUris) {
+			this.partiallySelectedUris.delete(uri);
+		}
+		await this.changelistStore.forgetUnversioned(committedUris);
 		await this.sendFileList();
 	}
 

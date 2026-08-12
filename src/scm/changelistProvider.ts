@@ -1,6 +1,45 @@
 import * as vscode from 'vscode';
-import type { API, Change } from '../gitApi/git.d';
+import { Status, type API, type Change } from '../gitApi/git.d';
 import { ChangelistStore } from './changelistStore';
+
+function getResourceDecorations(change: Change): vscode.SourceControlResourceDecorations {
+	const modified = { iconPath: new vscode.ThemeIcon('diff-modified') };
+	const added = { iconPath: new vscode.ThemeIcon('diff-added') };
+	const deleted = { iconPath: new vscode.ThemeIcon('diff-removed') };
+	const renamed = { iconPath: new vscode.ThemeIcon('diff-renamed') };
+
+	switch (change.status) {
+		case Status.INDEX_ADDED:
+		case Status.INTENT_TO_ADD:
+			return { ...added, tooltip: 'Added' };
+		case Status.UNTRACKED:
+			return { iconPath: new vscode.ThemeIcon('question'), tooltip: 'Untracked' };
+		case Status.INDEX_DELETED:
+		case Status.DELETED:
+			return { ...deleted, strikeThrough: true, tooltip: 'Deleted' };
+		case Status.INDEX_RENAMED:
+		case Status.INTENT_TO_RENAME:
+			return { ...renamed, tooltip: 'Renamed' };
+		case Status.INDEX_COPIED:
+			return { iconPath: new vscode.ThemeIcon('files'), tooltip: 'Copied' };
+		case Status.IGNORED:
+			return { iconPath: new vscode.ThemeIcon('circle-slash'), faded: true, tooltip: 'Ignored' };
+		case Status.TYPE_CHANGED:
+			return { iconPath: new vscode.ThemeIcon('symbol-interface'), tooltip: 'Type Changed' };
+		case Status.ADDED_BY_US:
+		case Status.ADDED_BY_THEM:
+		case Status.DELETED_BY_US:
+		case Status.DELETED_BY_THEM:
+		case Status.BOTH_ADDED:
+		case Status.BOTH_DELETED:
+		case Status.BOTH_MODIFIED:
+			return { iconPath: new vscode.ThemeIcon('warning'), tooltip: 'Merge Conflict' };
+		case Status.INDEX_MODIFIED:
+		case Status.MODIFIED:
+		default:
+			return { ...modified, tooltip: 'Modified' };
+	}
+}
 
 /**
  * Native VS Code SCM surface for changelists, complementary to the commit
@@ -56,6 +95,7 @@ export class ChangelistScmProvider implements vscode.Disposable {
 				.map((change) => ({
 					resourceUri: change.uri,
 					command: { command: 'vscode.open', title: 'Open', arguments: [change.uri] },
+					decorations: getResourceDecorations(change),
 				}));
 		}
 	}

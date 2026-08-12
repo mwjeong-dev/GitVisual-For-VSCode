@@ -6,12 +6,6 @@ import * as vscode from 'vscode';
 import type { Repository } from '../gitApi/git.d';
 import { spawnGit } from '../gitApi/spawnGit';
 import { relPathFromRepoRoot } from '../gitApi/repoContext';
-import type { Changelist } from './changelistStore';
-
-/** Commits whatever is currently in the real index — the common case when only one changelist has staged content. */
-export async function commitIndex(repo: Repository, message: string, amend: boolean): Promise<void> {
-	await repo.commit(message, { amend });
-}
 
 /**
  * Copies one path's current real-index entry (blob + mode) into a scratch
@@ -33,24 +27,24 @@ async function copyRealIndexEntry(repoRoot: string, scratchIndexPath: string, re
 }
 
 /**
- * Commits only `changelist`'s files, built out-of-band via a scratch index
- * (GIT_INDEX_FILE) so the real index/working tree — and therefore every
- * other changelist's concurrently staged content — is left untouched. Each
- * file's *current real-index* content (whatever staging already wrote there,
- * see scm/staging.ts) is what gets committed for that path.
+ * Commits only the selected files through a scratch index. Whole-file
+ * selections use current working-tree content; files with explicit line
+ * selections copy their prepared real-index blob. Unselected working-tree
+ * changes and externally staged paths remain untouched.
  *
  * Baseline for the scratch index is always HEAD's tree (not HEAD~1, even
- * when amending): that preserves every other file HEAD already changed.
- * Amend only changes which commit the new one replaces — parent becomes
- * HEAD's parent instead of HEAD — while this changelist's paths are always
- * refreshed to their latest staged content on top of that baseline.
+ * when amending): that preserves every other file already present in HEAD.
  */
-export async function commitChangelistIsolated(
+export async function commitFilesIsolated(
 	repo: Repository,
-	changelist: Changelist,
+	uriStrings: readonly string[],
 	message: string,
 	amend: boolean,
+	realIndexUriStrings: ReadonlySet<string> = new Set(),
 ): Promise<void> {
+	if (uriStrings.length === 0) {
+		return;
+	}
 	const repoRoot = repo.rootUri.fsPath;
 	const scratchIndexPath = path.join(os.tmpdir(), `gittools-index-${randomUUID()}`);
 
@@ -62,9 +56,19 @@ export async function commitChangelistIsolated(
 
 		await spawnGit(repoRoot, ['read-tree', 'HEAD'], { env: { GIT_INDEX_FILE: scratchIndexPath } });
 
-		const relPaths = changelist.fileUris.map((uriString) => relPathFromRepoRoot(repo, vscode.Uri.parse(uriString)));
-		for (const relPath of relPaths) {
-			await copyRealIndexEntry(repoRoot, scratchIndexPath, relPath);
+		const relPaths = uriStrings.map((uriString) => relPathFromRepoRoot(repo, vscode.Uri.parse(uriString)));
+		const workingTreePaths = uriStrings
+			.filter((uri) => !realIndexUriStrings.has(uri))
+			.map((uri) => relPathFromRepoRoot(repo, vscode.Uri.parse(uri)));
+		if (workingTreePaths.length > 0) {
+			await spawnGit(repoRoot, ['add', '--all', '--', ...workingTreePaths], {
+				env: { GIT_INDEX_FILE: scratchIndexPath },
+			});
+		}
+		for (const uri of uriStrings) {
+			if (realIndexUriStrings.has(uri)) {
+				await copyRealIndexEntry(repoRoot, scratchIndexPath, relPathFromRepoRoot(repo, vscode.Uri.parse(uri)));
+			}
 		}
 
 		const treeSha = (
@@ -78,6 +82,9 @@ export async function commitChangelistIsolated(
 		const newCommitSha = (await spawnGit(repoRoot, commitArgs)).stdout.trim();
 
 		await spawnGit(repoRoot, ['update-ref', 'HEAD', newCommitSha, headSha]);
+		// Align only the committed paths in the real index with the new HEAD.
+		// Other externally staged paths remain untouched.
+		await spawnGit(repoRoot, ['reset', '-q', 'HEAD', '--', ...relPaths]);
 	} finally {
 		await fs.unlink(scratchIndexPath).catch(() => undefined);
 	}

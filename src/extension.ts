@@ -61,7 +61,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	const reconcileAll = async () => {
 		for (const repo of api.repositories) {
-			await changelistStore.reconcile(allChangedUris(repo));
+			await changelistStore.reconcile(
+				allChangedUris(repo),
+				repo.state.untrackedChanges.map((change) => change.uri.toString()),
+			);
 		}
 		changelistScmProvider.refresh();
 		await commitPanelProvider.refresh();

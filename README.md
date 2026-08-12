@@ -17,12 +17,12 @@ PyCharm 스타일 git 도구를 VS Code로 이식하는 extension. 커밋 패널
 
 ### 커밋 패널 (액티비티바 "Git Tools" 아이콘)
 - Changelist별로 그룹핑된 변경 파일 목록 + 별도의 "Unversioned Files" 그룹
-- 파일 클릭 시 HEAD 대비 인라인 diff, 추가/삭제 라인 단위 체크박스로 부분 스테이징
-  (체크박스 토글 즉시 `git hash-object` + `git update-index --cacheinfo`로 실제 인덱스에 반영)
-- 파일/changelist 단위 전체 stage·unstage 체크박스
+- 파일 클릭 시 HEAD 대비 인라인 diff, 추가/삭제 라인 단위 체크박스로 부분 선택
+- 파일/changelist 체크박스는 커밋 포함 여부만 로컬에서 즉시 변경하며, 파일을 선택할 때는 Git 명령을 실행하지 않음
+- Commit 시 선택 파일을 scratch index에 한 번에 구성해 커밋하므로 선택하지 않은 working tree/index 내용은 보존
 - Changelist 생성(+ New Changelist) · 이름 더블클릭으로 리네임 · 삭제(파일은 Default로 이동)
 - 파일 행의 드롭다운으로 다른 changelist로 이동
-- 커밋 대상 선택: "All Staged Changes"(전체 인덱스) 또는 특정 changelist 하나만 격리 커밋
+- 커밋 대상 선택: "All Selected Changes"(체크한 모든 파일) 또는 특정 changelist 하나만 격리 커밋
   - 특정 changelist만 커밋할 때는 실제 index/working tree를 건드리지 않고 `GIT_INDEX_FILE` 스크래치 인덱스로
     별도 커밋을 만들어, 다른 changelist에 staged된 내용이 그대로 보존됩니다.
 - Amend 체크박스 (직전 커밋에 합치기, 메시지 비워두면 기존 메시지 유지)
