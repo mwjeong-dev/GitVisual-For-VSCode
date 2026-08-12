@@ -202,7 +202,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		for (const uri of uriStrings) {
 			this.partiallySelectedUris.delete(uri);
 		}
-		await this.changelistStore.forgetUnversioned(uriStrings);
 		await this.sendFileList();
 	}
 
@@ -222,7 +221,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		for (const uri of committedUris) {
 			this.partiallySelectedUris.delete(uri);
 		}
-		await this.changelistStore.forgetUnversioned(committedUris);
 		await this.sendFileList();
 	}
 

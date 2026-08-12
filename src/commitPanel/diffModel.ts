@@ -9,7 +9,6 @@ import type { ChangelistStore } from '../scm/changelistStore';
 function toDto(
 	change: Change,
 	stagedUris: ReadonlySet<string>,
-	unversionedUris: ReadonlySet<string>,
 	changelistStore: ChangelistStore,
 ): ChangedFileDto {
 	const uri = change.uri.toString();
@@ -17,7 +16,7 @@ function toDto(
 		uri,
 		relPath: vscode.workspace.asRelativePath(change.uri, false),
 		statusLabel: statusLabel(change.status),
-		isUntracked: unversionedUris.has(uri) || changelistStore.isUnversioned(uri),
+		isUntracked: isUntrackedStatus(change.status),
 		isStaged: stagedUris.has(uri),
 		changelistId: (changelistStore.findByFileUri(uri) ?? changelistStore.getDefault()).id,
 	};
@@ -27,14 +26,9 @@ function toDto(
 export function listChangedFiles(repo: Repository, changelistStore: ChangelistStore): ChangedFileDto[] {
 	const { workingTreeChanges, indexChanges, untrackedChanges, mergeChanges } = repo.state;
 	const stagedUris = new Set(indexChanges.map((change) => change.uri.toString()));
-	const unversionedUris = new Set(
-		[...indexChanges, ...untrackedChanges]
-			.filter((change) => isUntrackedStatus(change.status))
-			.map((change) => change.uri.toString()),
-	);
 	const byUri = new Map<string, ChangedFileDto>();
 	for (const change of [...mergeChanges, ...indexChanges, ...workingTreeChanges, ...untrackedChanges]) {
-		byUri.set(change.uri.toString(), toDto(change, stagedUris, unversionedUris, changelistStore));
+		byUri.set(change.uri.toString(), toDto(change, stagedUris, changelistStore));
 	}
 	return [...byUri.values()].sort((a, b) => a.relPath.localeCompare(b.relPath));
 }
