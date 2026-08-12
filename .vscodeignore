@@ -1,0 +1,12 @@
+.vscode/**
+src/**
+web/**
+out/**
+out-web/**
+node_modules/**
+.gitignore
+esbuild.js
+tsconfig.json
+web/tsconfig.json
+**/*.map
+**/.eslintrc*

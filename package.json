@@ -1,0 +1,101 @@
+{
+  "name": "pycharm-git-tools",
+  "displayName": "PyCharm Git Tools",
+  "description": "PyCharm-style git tooling for VS Code: commit panel with hunk staging, changelists, commit graph, inline blame, and line-range history.",
+  "version": "0.0.1",
+  "publisher": "local-dev",
+  "private": true,
+  "engines": {
+    "vscode": "^1.86.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitToolsActivityBar",
+          "title": "Git Tools",
+          "icon": "media/commit.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "gitToolsPanel",
+          "title": "Git Graph",
+          "icon": "media/graph.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitToolsActivityBar": [
+        {
+          "id": "gitTools.branchesView",
+          "name": "Branches",
+          "type": "webview"
+        },
+        {
+          "id": "gitTools.commitPanel",
+          "name": "Commit",
+          "type": "webview"
+        }
+      ],
+      "gitToolsPanel": [
+        {
+          "id": "gitTools.graphView",
+          "name": "Graph",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gitTools.showChangedFiles",
+        "title": "Git Tools: Log Changed Files (debug)"
+      },
+      {
+        "command": "gitTools.refreshGraph",
+        "title": "Refresh Graph",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "gitTools.refreshGraph",
+          "when": "view == gitTools.graphView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Git Tools",
+      "properties": {
+        "gitTools.graph.maxCommits": {
+          "type": "number",
+          "default": 300,
+          "description": "Number of commits to load in the graph view."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./web/tsconfig.json",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.86.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.0"
+  }
+}
