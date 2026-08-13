@@ -115,6 +115,16 @@ document.getElementById('refresh-files')!.addEventListener('click', () => post({
 document.getElementById('expand-all')!.addEventListener('click', () => { collapsedGroups.clear(); renderFileList(); });
 document.getElementById('collapse-all')!.addEventListener('click', () => { for (const group of buildGroups()) collapsedGroups.add(group.id); renderFileList(); });
 
+function updateCommitButtons(): void {
+	const count = selectedFileUris.size;
+	commitButtonEl.textContent = count > 0 ? `${text('Commit', '커밋(I)')} (${count})` : text('Commit', '커밋(I)');
+	commitPushButtonEl.textContent = count > 0 ? `${text('Commit and Push…', '커밋 및 푸시(P)…')} (${count})` : text('Commit and Push…', '커밋 및 푸시(P)…');
+	commitButtonEl.disabled = count === 0;
+	commitPushButtonEl.disabled = count === 0;
+}
+
+updateCommitButtons();
+
 amendCheckboxEl.addEventListener('change', () => {
 	if (amendCheckboxEl.checked && commitMessageEl.value.trim().length === 0) {
 		commitMessageEl.value = lastCommitMessage;
@@ -240,6 +250,7 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 		if (fileContainer) {
 			updateGroupCheckbox(fileContainer);
 		}
+		updateCommitButtons();
 	});
 	item.appendChild(checkbox);
 
@@ -325,6 +336,7 @@ function renderGroupHeader(group: RenderGroup, fileContainer: HTMLElement): HTML
 				selectedFileUris.delete(file.uri);
 			}
 		}
+		updateCommitButtons();
 	});
 	header.appendChild(checkbox);
 
@@ -512,9 +524,6 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessag
 			files = message.files;
 			const currentUris = new Set(files.map((file) => file.uri));
 			for (const file of files) {
-				if (!knownFileUris.has(file.uri)) {
-					selectedFileUris.add(file.uri);
-				}
 				knownFileUris.add(file.uri);
 			}
 			for (const uri of [...knownFileUris]) {
@@ -530,6 +539,7 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessag
 				currentHunks = [];
 			}
 			renderCommitTargetOptions();
+			updateCommitButtons();
 			renderFileList();
 			renderDiff();
 			break;

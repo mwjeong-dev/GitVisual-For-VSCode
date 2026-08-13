@@ -58,10 +58,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 	private async sendFileList(): Promise<void> {
 		const repo = this.repo;
 		if (!repo) {
+			if (this.view) this.view.badge = undefined;
 			this.post({ type: 'fileList', files: [], changelists: [] });
 			return;
 		}
 		const files = listChangedFiles(repo, this.changelistStore);
+		if (this.view) {
+			this.view.badge = files.length > 0
+				? { value: files.length, tooltip: `${files.length} changed ${files.length === 1 ? 'file' : 'files'}` }
+				: undefined;
+		}
 		const currentUris = new Set(files.map((f) => f.uri));
 		for (const uri of [...this.fileStateByUri.keys()]) {
 			if (!currentUris.has(uri)) {
