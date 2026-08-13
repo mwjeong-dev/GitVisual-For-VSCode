@@ -16,12 +16,12 @@ function allChangedUris(repo: Repository): string[] {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-	const output = vscode.window.createOutputChannel('Git Studio');
+	const output = vscode.window.createOutputChannel('GitVisual');
 	context.subscriptions.push(output);
 
 	const api = await getBuiltinGitApi();
 	if (!api) {
-		output.appendLine('vscode.git extension is not available; Git Studio will stay idle.');
+		output.appendLine('vscode.git extension is not available; GitVisual will stay idle.');
 		return;
 	}
 
@@ -105,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}),
 	);
 
-	output.appendLine('Git Studio activated.');
+	output.appendLine('GitVisual activated.');
 }
 
 export function deactivate(): void {

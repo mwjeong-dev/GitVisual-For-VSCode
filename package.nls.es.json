@@ -1,11 +1,11 @@
 {
-  "extension.displayName": "Git Studio",
+  "extension.displayName": "GitVisual (Preview)",
   "extension.description": "Un espacio de trabajo Git para Visual Studio Code orientado a listas de cambios, con commits selectivos, historial, ramas y Blame.",
-  "view.gitTools": "Git Studio",
-  "view.gitGraph": "Git Studio",
+  "view.gitTools": "GitVisual",
+  "view.gitGraph": "GitVisual",
   "view.branches": "Ramas",
   "view.commit": "Confirmar cambios",
   "view.graph": "Gráfico",
-  "command.toggleBlame": "Git Studio: Alternar Blame en línea",
-  "command.lineHistory": "Git Studio: Mostrar historial de las líneas seleccionadas"
+  "command.toggleBlame": "GitVisual: Alternar Blame en línea",
+  "command.lineHistory": "GitVisual: Mostrar historial de las líneas seleccionadas"
 }

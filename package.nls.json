@@ -1,11 +1,11 @@
 {
-  "extension.displayName": "Git Studio",
-  "extension.description": "A changelist-oriented Git workspace for Visual Studio Code with selective commits, history, branches, and blame.",
-  "view.gitTools": "Git Studio",
-  "view.gitGraph": "Git Studio",
+  "extension.displayName": "GitVisual (Preview)",
+  "extension.description": "A visual Git workspace for Visual Studio Code with changelists, selective commits, history, branches, and blame.",
+  "view.gitTools": "GitVisual",
+  "view.gitGraph": "GitVisual",
   "view.branches": "Branches",
   "view.commit": "Commit",
   "view.graph": "Graph",
-  "command.toggleBlame": "Git Studio: Toggle Inline Blame",
-  "command.lineHistory": "Git Studio: Show Line Range History"
+  "command.toggleBlame": "GitVisual: Toggle Inline Blame",
+  "command.lineHistory": "GitVisual: Show Line Range History"
 }

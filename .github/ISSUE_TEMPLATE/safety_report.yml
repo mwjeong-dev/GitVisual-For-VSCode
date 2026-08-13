@@ -1,0 +1,41 @@
+name: Git safety report
+description: Report possible data loss, index corruption, or an unsafe commit result
+title: "[Safety] "
+labels: [safety]
+body:
+  - type: markdown
+    attributes:
+      value: Stop using the affected workflow until the issue is understood. Do not include credentials or private source code.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, VS Code version, Git version, and GitVisual version
+    validations:
+      required: true
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation
+      options:
+        - Selective commit
+        - Amend
+        - Partial line selection
+        - Commit and push
+        - Branch operation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: state
+    attributes:
+      label: Repository state before the operation
+      description: Mention staged files and whether merge, rebase, or cherry-pick was active.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Unexpected result and recovery attempted
+    validations:
+      required: true

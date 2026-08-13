@@ -1,15 +1,34 @@
 {
-  "name": "git-studio-vscode",
+  "name": "gitvisual-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.0.1",
-  "publisher": "local-dev",
-  "private": true,
+  "version": "0.1.2",
+  "publisher": "mwjeong-dev",
+  "preview": true,
+  "license": "MIT",
+  "icon": "media/marketplace-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mwjeong-dev/vscode_git_tools.git"
+  },
+  "homepage": "https://github.com/mwjeong-dev/vscode_git_tools#readme",
+  "bugs": {
+    "url": "https://github.com/mwjeong-dev/vscode_git_tools/issues"
+  },
   "engines": {
     "vscode": "^1.86.0"
   },
   "categories": [
     "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "changelist",
+    "selective commit",
+    "git graph",
+    "branches",
+    "blame",
+    "line history"
   ],
   "extensionDependencies": [
     "vscode.git"
@@ -56,7 +75,7 @@
     "commands": [
       {
         "command": "gitTools.showChangedFiles",
-        "title": "Git Studio: Log Changed Files (debug)"
+        "title": "GitVisual: Log Changed Files (debug)"
       },
       {
         "command": "gitTools.refreshGraph",
@@ -103,7 +122,7 @@
       ]
     },
     "configuration": {
-      "title": "Git Studio",
+      "title": "GitVisual",
       "properties": {
         "gitTools.graph.maxCommits": {
           "type": "number",
