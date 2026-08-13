@@ -2,6 +2,8 @@ export interface BranchTreeItemDto {
 	readonly kind: 'local' | 'remote' | 'tag';
 	readonly name: string;
 	readonly isCurrent: boolean;
+	readonly ahead?: number;
+	readonly behind?: number;
 }
 
 export type ExtensionToBranchesMessage =

@@ -71,6 +71,9 @@ style.textContent = `
 	.row .icon svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
 	.row.current .icon { opacity: 1; }
 	.row .name { overflow: hidden; text-overflow: ellipsis; }
+	.row .sync-counts { display: inline-flex; flex: 0 0 auto; gap: 6px; margin-left: 2px; font-size: 12px; font-weight: 600; }
+	.row .sync-counts .behind { color: #4da3ff; }
+	.row .sync-counts .ahead { color: var(--vscode-gitDecoration-addedResourceForeground, #55b56a); }
 	.row .checkout { display: none; margin-left: auto; padding: 1px 6px; }
 	.row:hover .checkout, .row:focus-within .checkout { display: inline-block; }
 	.error-banner { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 4px 8px; }
@@ -108,6 +111,8 @@ interface TreeNode {
 	fullName?: string;
 	isCurrent?: boolean;
 	kind?: BranchTreeItemDto['kind'];
+	ahead?: number;
+	behind?: number;
 	readonly children: Map<string, TreeNode>;
 }
 
@@ -125,6 +130,8 @@ function insert(sectionRoot: TreeNode, branch: BranchTreeItemDto): void {
 			node.fullName = branch.name;
 			node.isCurrent = branch.isCurrent;
 			node.kind = branch.kind;
+			node.ahead = branch.ahead;
+			node.behind = branch.behind;
 		}
 	});
 }
@@ -160,6 +167,25 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 	name.className = 'name';
 	name.textContent = node.name;
 	row.appendChild(name);
+	if (isLeaf && ((node.behind ?? 0) > 0 || (node.ahead ?? 0) > 0)) {
+		const sync = document.createElement('span');
+		sync.className = 'sync-counts';
+		if ((node.behind ?? 0) > 0) {
+			const behind = document.createElement('span');
+			behind.className = 'behind';
+			behind.textContent = `↙ ${node.behind}`;
+			behind.title = text(`${node.behind} commits to pull`, `Pull 받을 커밋 ${node.behind}개`);
+			sync.appendChild(behind);
+		}
+		if ((node.ahead ?? 0) > 0) {
+			const ahead = document.createElement('span');
+			ahead.className = 'ahead';
+			ahead.textContent = `↗ ${node.ahead}`;
+			ahead.title = text(`${node.ahead} commits to push`, `Push할 커밋 ${node.ahead}개`);
+			sync.appendChild(ahead);
+		}
+		row.appendChild(sync);
+	}
 
 	if (isLeaf) {
 		row.addEventListener('click', (event) => { event.stopPropagation(); selectedName = node.fullName; selectedKind = node.kind; render(); });
