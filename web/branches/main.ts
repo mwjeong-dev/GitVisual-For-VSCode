@@ -24,7 +24,7 @@ root.innerHTML = `
 		<nav class="action-rail">
 			<button id="new-branch" title="${text('New branch from HEAD', '현재 브랜치에서 새 브랜치 만들기')}"><svg viewBox="0 0 20 20"><path d="M10 3v14M3 10h14"/></svg></button>
 			<button id="fetch" title="${text('Fetch all remotes and prune deleted refs', '모든 원격 저장소를 Fetch하고 삭제된 ref를 정리합니다')}"><svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M13 7h3.5V3.5"/></svg></button>
-			<button id="update-selected" title="${text('Update selected branch', '선택 항목 업데이트')}"><svg viewBox="0 0 20 20"><path d="M3 6h13M13 3l3 3-3 3M17 14H4M7 11l-3 3 3 3"/></svg></button>
+			<button id="update-selected" title="${text('Update selected branch', '선택 항목 업데이트')}"><svg viewBox="0 0 20 20"><path d="M10 3v9M6.5 9.5 10 13l3.5-3.5M4 16.5h12"/></svg></button>
 			<button id="create-patch" title="${text('Create patch from selection', '선택 항목에서 패치 생성')}"><svg viewBox="0 0 20 20"><path d="M10 3v10M6 10l4 4 4-4M4 17h12"/></svg></button>
 			<button id="delete-selected" title="${text('Delete selected branch or tag', '선택한 브랜치 또는 태그 삭제')}"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 3h4l1 3H7l1-3ZM6 6l1 11h6l1-11M9 9v5M11 9v5"/></svg></button>
 			<button id="toggle-search" title="${text('Search branches', '브랜치 검색')}"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5"/><path d="m12.2 12.2 4.3 4.3"/></svg></button>
