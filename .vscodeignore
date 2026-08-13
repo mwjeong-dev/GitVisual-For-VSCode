@@ -1,5 +1,6 @@
 .vscode/**
 .idea/**
+AI_HANDOFF.md
 .claude/**
 .github/**
 src/**

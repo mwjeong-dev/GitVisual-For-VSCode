@@ -3,7 +3,6 @@ import { createTranslator } from '../shared/localization';
 import type { API } from '../gitApi/git.d';
 import { GitRefType } from '../gitApi/refType';
 import { spawnGit } from '../gitApi/spawnGit';
-import * as path from 'path';
 import type {
 	BranchTreeItemDto,
 	BranchesToExtensionMessage,
@@ -138,9 +137,6 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 				case 'pushBranch':
 					await this.pushBranch(message.name);
 					break;
-				case 'createPatch':
-					await this.createPatch(message.kind, message.name);
-					break;
 				case 'updateRef':
 					await this.updateRef(message.kind, message.name);
 					break;
@@ -216,25 +212,6 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		void vscode.window.showInformationMessage(this.text(`Pushed ${name} to ${remote}.`, `${name} 브랜치를 ${remote}에 푸시했습니다.`));
 	}
 
-	private async createPatch(kind: 'local' | 'remote' | 'tag', name: string): Promise<void> {
-		const repo = this.repo;
-		if (!repo) return;
-		let range = name;
-		if (kind === 'local') {
-			const branch = await repo.getBranch(name);
-			if (branch.upstream) range = `${branch.upstream.remote}/${branch.upstream.name}..${name}`;
-		}
-		const uri = await vscode.window.showSaveDialog({
-			defaultUri: vscode.Uri.file(path.join(repo.rootUri.fsPath, `${name.replace(/[\\/]/g, '-')}.patch`)),
-			filters: { Patch: ['patch'] },
-		});
-		if (!uri) return;
-		const args = range === name ? ['format-patch', '-1', '--stdout', name] : ['format-patch', '--stdout', range];
-		const output = (await spawnGit(repo.rootUri.fsPath, args)).stdout;
-		await vscode.workspace.fs.writeFile(uri, Buffer.from(output));
-		void vscode.window.showInformationMessage(this.text('Patch file created.', '패치 파일을 생성했습니다.'));
-	}
-
 	private async updateRef(kind: 'local' | 'remote' | 'tag', name: string): Promise<void> {
 		const repo = this.repo;
 		if (!repo) return;
@@ -262,23 +239,41 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		void vscode.window.showInformationMessage(this.text(`Updated ${name}.`, `${name}을(를) 업데이트했습니다.`));
 	}
 
-	private async deleteRef(kind: 'local' | 'tag', name: string): Promise<void> {
+	private async deleteRef(kind: 'local' | 'remote' | 'tag', name: string): Promise<void> {
 		const repo = this.repo;
 		if (!repo) return;
 		if (kind === 'local' && repo.state.HEAD?.name === name) {
 			void vscode.window.showWarningMessage(this.text('The currently checked-out branch cannot be deleted.', '현재 체크아웃된 브랜치는 삭제할 수 없습니다.'));
 			return;
 		}
-		const label = kind === 'tag' ? this.text('tag', '태그') : this.text('branch', '브랜치');
+		const label = kind === 'tag'
+			? this.text('tag', '태그')
+			: kind === 'remote'
+				? this.text('remote branch', '원격 브랜치')
+				: this.text('branch', '브랜치');
+		const warning = kind === 'remote'
+			? this.text(
+				`Delete remote branch “${name}” from the remote repository? Other users will no longer be able to fetch it.`,
+				`원격 저장소에서 “${name}” 브랜치를 삭제할까요? 다른 사용자도 더 이상 이 브랜치를 Fetch할 수 없습니다.`,
+			)
+			: this.text(`Delete ${label} “${name}”?`, `${label} “${name}”을(를) 삭제할까요?`);
 		const confirmed = await vscode.window.showWarningMessage(
-			this.text(`Delete ${label} “${name}”?`, `${label} “${name}”을(를) 삭제할까요?`),
+			warning,
 			{ modal: true },
 			this.text('Delete', '삭제'),
 		);
 		if (confirmed !== this.text('Delete', '삭제')) return;
 		this.post({ type: 'busy', busy: true });
 		if (kind === 'tag') await repo.deleteTag(name);
-		else await repo.deleteBranch(name, false);
+		else if (kind === 'local') await repo.deleteBranch(name, false);
+		else {
+			const separator = name.indexOf('/');
+			if (separator <= 0 || separator === name.length - 1) throw new Error(this.text('Invalid remote branch name.', '원격 브랜치 이름이 올바르지 않습니다.'));
+			const remote = name.slice(0, separator);
+			const branch = name.slice(separator + 1);
+			await spawnGit(repo.rootUri.fsPath, ['push', remote, '--delete', branch]);
+			await repo.fetch({ remote, prune: true });
+		}
 		await repo.status();
 		await this.sendBranches();
 	}

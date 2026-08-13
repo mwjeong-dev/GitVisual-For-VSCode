@@ -23,9 +23,8 @@ root.innerHTML = `
 	<div class="branch-shell">
 		<nav class="action-rail">
 			<button id="new-branch" title="${text('New branch from HEAD', '현재 브랜치에서 새 브랜치 만들기')}"><svg viewBox="0 0 20 20"><path d="M10 3v14M3 10h14"/></svg></button>
-			<button id="fetch" title="${text('Fetch all remotes and prune deleted refs', '모든 원격 저장소를 Fetch하고 삭제된 ref를 정리합니다')}"><svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M13 7h3.5V3.5"/></svg></button>
+			<button id="fetch" title="Fetch"><svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M13 7h3.5V3.5"/></svg></button>
 			<button id="update-selected" title="${text('Update selected branch', '선택 항목 업데이트')}"><svg viewBox="0 0 20 20"><path d="M10 3v9M6.5 9.5 10 13l3.5-3.5M4 16.5h12"/></svg></button>
-			<button id="create-patch" title="${text('Create patch from selection', '선택 항목에서 패치 생성')}"><svg viewBox="0 0 20 20"><path d="M10 3v10M6 10l4 4 4-4M4 17h12"/></svg></button>
 			<button id="delete-selected" title="${text('Delete selected branch or tag', '선택한 브랜치 또는 태그 삭제')}"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 3h4l1 3H7l1-3ZM6 6l1 11h6l1-11M9 9v5M11 9v5"/></svg></button>
 			<button id="toggle-search" title="${text('Search branches', '브랜치 검색')}"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5"/><path d="m12.2 12.2 4.3 4.3"/></svg></button>
 		</nav>
@@ -97,11 +96,10 @@ function requireSelection(): { name: string; kind: BranchTreeItemDto['kind'] } |
 	return undefined;
 }
 document.getElementById('update-selected')!.addEventListener('click', () => { const value = requireSelection(); if (value) post({ type: 'updateRef', ...value }); });
-document.getElementById('create-patch')!.addEventListener('click', () => { const value = requireSelection(); if (value) post({ type: 'createPatch', ...value }); });
 document.getElementById('delete-selected')!.addEventListener('click', () => {
 	const value = requireSelection();
 	if (value && value.kind !== 'remote') post({ type: 'deleteRef', kind: value.kind, name: value.name });
-	else if (value) showError(text('Remote branches cannot be deleted here.', '원격 브랜치는 여기서 삭제할 수 없습니다.'));
+	else if (value) showError(text('Delete remote branches from their context menu.', '원격 브랜치는 우클릭 메뉴에서 삭제하세요.'));
 });
 document.getElementById('toggle-search')!.addEventListener('click', () => { searchBoxEl.classList.toggle('visible'); if (searchBoxEl.classList.contains('visible')) searchEl.focus(); });
 searchEl.addEventListener('input', render);
@@ -242,9 +240,14 @@ function showContextMenu(x: number, y: number, name: string, kind: BranchTreeIte
 	const suggestedName = kind === 'remote' ? name.split('/').slice(1).join('/') : undefined;
 	addItem(text('New Branch from Here…', '여기에서 새 브랜치 만들기…'), () => post({ type: 'createBranch', from: name, suggestedName }));
 	addItem(text('Create Tag Here…', '여기에 태그 만들기…'), () => post({ type: 'createTag', ref: name }));
-	if ((kind === 'local' && !isCurrent) || kind === 'tag') {
+	if ((kind === 'local' && !isCurrent) || kind === 'remote' || kind === 'tag') {
 		const separator = document.createElement('div'); separator.className = 'context-separator'; menu.appendChild(separator);
-		addItem(kind === 'tag' ? text('Delete Tag…', '태그 삭제…') : text('Delete Branch…', '브랜치 삭제…'), () => post({ type: 'deleteRef', kind, name }));
+		const label = kind === 'tag'
+			? text('Delete Tag…', '태그 삭제…')
+			: kind === 'remote'
+				? text('Delete Remote Branch…', '원격 브랜치 삭제…')
+				: text('Delete Branch…', '브랜치 삭제…');
+		addItem(label, () => post({ type: 'deleteRef', kind, name }));
 	}
 	document.body.appendChild(menu);
 	const rect = menu.getBoundingClientRect();

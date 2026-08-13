@@ -42,8 +42,7 @@ The GitVisual Activity Bar view organizes references into Local, Remote, and Tag
 - Checkout local branches, remote branches, tags, or revisions
 - Create branches and tags from a selected reference
 - Push and update branches
-- Delete local branches and tags with confirmation
-- Create patch files
+- Delete local branches, remote branches, and tags with confirmation
 - Double-click a reference to filter the commit graph
 
 ## Commit Graph
@@ -56,7 +55,7 @@ The bottom-panel GitVisual view renders a visual history from `git log --all --t
 - View commit metadata and changed files
 - Resize the changed-files and commit-details panes
 - Open file diffs for a commit
-- Copy hashes, create patches, cherry-pick, checkout, compare, reset, revert, fix up, rebase, and create branches or tags
+- Copy hashes, create commit patches, cherry-pick, checkout, compare, reset, revert, fix up, rebase, and create branches or tags
 
 ## Blame and Line History
 
