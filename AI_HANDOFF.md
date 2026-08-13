@@ -7,7 +7,7 @@ This document is the working context for future AI-assisted development. Read it
 - Name: GitVisual
 - VS Code extension ID: `mwjeong-dev.gitvisual-vscode`
 - Publisher: `mwjeong-dev`
-- Current package version: `0.1.4`
+- Current package version: `0.1.5`
 - License: MIT
 - Marketplace icon: `media/marketplace-icon.png`
 - Activity Bar icon: `media/commit.svg`
