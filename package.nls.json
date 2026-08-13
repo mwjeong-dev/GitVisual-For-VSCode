@@ -1,11 +1,11 @@
 {
-  "extension.displayName": "PyCharm Git Tools",
-  "extension.description": "PyCharm-style Git tools for VS Code: changelists, partial staging, commit graph, inline blame, and line history.",
-  "view.gitTools": "Git Tools",
-  "view.gitGraph": "Git Graph",
+  "extension.displayName": "Git Studio",
+  "extension.description": "A changelist-oriented Git workspace for Visual Studio Code with selective commits, history, branches, and blame.",
+  "view.gitTools": "Git Studio",
+  "view.gitGraph": "Git Studio",
   "view.branches": "Branches",
   "view.commit": "Commit",
   "view.graph": "Graph",
-  "command.toggleBlame": "Git Tools: Toggle Inline Blame",
-  "command.lineHistory": "Git Tools: Show Line Range History"
+  "command.toggleBlame": "Git Studio: Toggle Inline Blame",
+  "command.lineHistory": "Git Studio: Show Line Range History"
 }

@@ -19,7 +19,7 @@ async function readWorkingTreeContent(uri: vscode.Uri): Promise<string> {
 }
 
 /**
- * Diff is always computed against HEAD (not the index) — matching PyCharm's
+ * Diff is always computed against HEAD (not the index) — matching the
  * model, where a changelist shows the full working-tree-vs-HEAD delta and
  * "staging" a subset of lines is just how that subset gets written to the
  * index in preparation for `repository.commit()`. New/untracked files have

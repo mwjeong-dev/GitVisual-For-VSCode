@@ -6,11 +6,11 @@ import type {
 } from '../../src/shared/protocol/graph';
 import { layoutCommits } from './layout';
 import { branchColorOffset, COL_WIDTH, renderGraphSvg, ROW_HEIGHT } from './render';
+import { createTranslator } from '../../src/shared/localization';
 
 const vscode = acquireVsCodeApi();
 const post = (message: GraphToExtensionMessage): void => vscode.postMessage(message);
-const ko = navigator.language.toLowerCase().startsWith('ko');
-const text = (english: string, korean: string): string => ko ? korean : english;
+const text = createTranslator(navigator.language);
 
 let commits: GraphCommitDto[] = [];
 let selectedHash: string | undefined;
@@ -227,7 +227,7 @@ function renderDetails(details: GraphCommitDetailsDto): void {
 		header.appendChild(refs);
 	}
 	const fileHead = document.createElement('div'); fileHead.className = 'file-head';
-	const count = document.createElement('span'); count.textContent = ko ? `변경된 파일 ${details.files.length}개` : `${details.files.length} changed file${details.files.length === 1 ? '' : 's'}`;
+	const count = document.createElement('span'); count.textContent = `${details.files.length} ${text(details.files.length === 1 ? 'changed file' : 'changed files', '개의 변경된 파일')}`;
 	fileHead.append(count);
 	const list = document.createElement('div'); list.className = 'file-list';
 	for (const file of details.files) {

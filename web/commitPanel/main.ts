@@ -4,11 +4,11 @@ import type {
 	ExtensionToWebviewMessage,
 	WebviewToExtensionMessage,
 } from '../../src/shared/protocol/commitPanel';
+import { createTranslator } from '../../src/shared/localization';
 import type { DiffHunk } from '../../src/shared/protocol/diff';
 
 const vscode = acquireVsCodeApi();
-const ko = navigator.language.toLowerCase().startsWith('ko');
-const text = (english: string, korean: string): string => ko ? korean : english;
+const text = createTranslator(navigator.language);
 
 function post(message: WebviewToExtensionMessage): void {
 	vscode.postMessage(message);
@@ -201,7 +201,7 @@ function buildGroups(): RenderGroup[] {
 	}));
 	const unversioned = files.filter((f) => f.isUntracked);
 	if (unversioned.length > 0) {
-		groups.push({ id: 'unversioned', label: 'Unversioned Files', files: unversioned });
+		groups.push({ id: 'unversioned', label: text('Unversioned Files', '버전이 없는 파일'), files: unversioned });
 	}
 	return groups;
 }
@@ -262,7 +262,7 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 	if (showMoveSelect && changelists.length > 1) {
 		const select = document.createElement('select');
 		select.className = 'move-select';
-		select.title = 'Move to changelist';
+		select.title = text('Move to changelist', '변경 목록으로 이동');
 		select.addEventListener('click', (e) => e.stopPropagation());
 		for (const changelist of changelists) {
 			const option = document.createElement('option');
@@ -363,14 +363,14 @@ function renderGroupHeader(group: RenderGroup, fileContainer: HTMLElement): HTML
 
 	const count = document.createElement('span');
 	count.className = 'count';
-	count.textContent = ko ? `${group.files.length}개 파일` : `${group.files.length} file${group.files.length === 1 ? '' : 's'}`;
+	count.textContent = `${group.files.length} ${text(group.files.length === 1 ? 'file' : 'files', '개 파일')}`;
 	header.appendChild(count);
 
 	if (group.changelistId && !group.isDefault) {
 		const deleteButton = document.createElement('button');
 		deleteButton.className = 'icon-button';
 		deleteButton.textContent = '×';
-		deleteButton.title = 'Delete Changelist';
+		deleteButton.title = text('Delete Changelist', '변경 목록 삭제');
 		deleteButton.addEventListener('click', (e) => {
 			e.stopPropagation();
 			post({ type: 'deleteChangelist', id: group.changelistId! });
@@ -407,7 +407,7 @@ function renderNewChangelistRow(): HTMLElement {
 	if (creatingChangelist) {
 		const input = document.createElement('input');
 		input.type = 'text';
-		input.placeholder = 'Changelist name';
+		input.placeholder = text('Changelist name', '변경 목록 이름');
 		input.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				submitCreateChangelist(input.value);

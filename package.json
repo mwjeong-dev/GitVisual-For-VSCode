@@ -1,5 +1,5 @@
 {
-  "name": "pycharm-git-tools",
+  "name": "git-studio-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "version": "0.0.1",
@@ -56,7 +56,7 @@
     "commands": [
       {
         "command": "gitTools.showChangedFiles",
-        "title": "Git Tools: Log Changed Files (debug)"
+        "title": "Git Studio: Log Changed Files (debug)"
       },
       {
         "command": "gitTools.refreshGraph",
@@ -103,7 +103,7 @@
       ]
     },
     "configuration": {
-      "title": "Git Tools",
+      "title": "Git Studio",
       "properties": {
         "gitTools.graph.maxCommits": {
           "type": "number",

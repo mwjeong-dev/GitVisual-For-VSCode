@@ -1,0 +1,11 @@
+{
+  "extension.displayName": "Git Studio",
+  "extension.description": "Ein auf Änderungslisten ausgerichteter Git-Arbeitsbereich für Visual Studio Code mit selektiven Commits, Verlauf, Branches und Blame.",
+  "view.gitTools": "Git Studio",
+  "view.gitGraph": "Git Studio",
+  "view.branches": "Branches",
+  "view.commit": "Commit",
+  "view.graph": "Graph",
+  "command.toggleBlame": "Git Studio: Inline-Blame umschalten",
+  "command.lineHistory": "Git Studio: Verlauf der ausgewählten Zeilen anzeigen"
+}

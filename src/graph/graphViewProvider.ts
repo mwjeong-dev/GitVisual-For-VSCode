@@ -6,6 +6,7 @@ import type { GraphCommitDto } from '../shared/protocol/graph';
 import { loadCommits } from './logReader';
 import { statusLabel } from '../gitApi/statusLabels';
 import { spawnGit } from '../gitApi/spawnGit';
+import { createTranslator } from '../shared/localization';
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
@@ -178,8 +179,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	private readonly ko = vscode.env.language.toLowerCase().startsWith('ko');
-	private text(english: string, korean: string): string { return this.ko ? korean : english; }
+	private readonly text = createTranslator(vscode.env.language);
 
 	private async sendCommitDetails(hash: string): Promise<void> {
 		const repo = this.repo;

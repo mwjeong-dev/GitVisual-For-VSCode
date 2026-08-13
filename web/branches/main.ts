@@ -3,10 +3,10 @@ import type {
 	BranchesToExtensionMessage,
 	ExtensionToBranchesMessage,
 } from '../../src/shared/protocol/branches';
+import { createTranslator } from '../../src/shared/localization';
 
 const vscode = acquireVsCodeApi();
-const ko = navigator.language.toLowerCase().startsWith('ko');
-const text = (english: string, korean: string): string => ko ? korean : english;
+const text = createTranslator(navigator.language);
 
 function post(message: BranchesToExtensionMessage): void {
 	vscode.postMessage(message);
@@ -16,6 +16,7 @@ let branches: BranchTreeItemDto[] = [];
 let selectedName: string | undefined;
 let selectedKind: BranchTreeItemDto['kind'] | undefined;
 const collapsedFolders = new Set<string>();
+const collapsedSections = new Set<BranchTreeItemDto['kind']>();
 
 const root = document.getElementById('root')!;
 root.innerHTML = `
@@ -54,13 +55,21 @@ style.textContent = `
 	.head-row { flex: 0 0 auto; padding: 8px 12px; margin-bottom: 5px; border-radius: 5px; background: var(--vscode-list-inactiveSelectionBackground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.loading { min-height: 18px; opacity: 0.7; font-size: 0.85em; }
 	.tree { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-bottom: 12px; }
-	.section-label { padding: 5px 5px 3px; font-weight: 600; font-size: 13px; cursor: pointer; }
+	.section-label { display: flex; align-items: center; gap: 5px; padding: 5px 5px 3px; font-weight: 600; font-size: 13px; cursor: pointer; }
+	.section-label:hover { background: var(--vscode-list-hoverBackground); }
+	.section-label .section-chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: 0.9; }
+	.section-label .section-chevron svg { display: block; width: 16px; height: 16px; }
+	.section-label.collapsed .section-chevron svg { transform: rotate(-90deg); }
 	.row { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 2px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 	.row:hover { background: var(--vscode-list-hoverBackground); }
 	.row.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
 	.row.current { font-weight: 600; color: var(--vscode-gitDecoration-addedResourceForeground); }
-	.row .chevron { flex: 0 0 auto; width: 1em; text-align: center; opacity: 0.7; }
-	.row .icon { flex: 0 0 auto; opacity: 0.8; }
+	.row .chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: 0.9; }
+	.row .chevron svg { display: block; width: 16px; height: 16px; }
+	.row .chevron.collapsed svg { transform: rotate(-90deg); }
+	.row .icon { display: grid; place-items: center; flex: 0 0 16px; width: 16px; height: 16px; opacity: 0.85; }
+	.row .icon svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
+	.row.current .icon { opacity: 1; }
 	.row .name { overflow: hidden; text-overflow: ellipsis; }
 	.row .checkout { display: none; margin-left: auto; padding: 1px 6px; }
 	.row:hover .checkout, .row:focus-within .checkout { display: inline-block; }
@@ -130,12 +139,21 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 
 	const chevron = document.createElement('span');
 	chevron.className = 'chevron';
-	chevron.textContent = !hasChildren ? '' : collapsedFolders.has(path) ? '▸' : '▾';
+	if (hasChildren) {
+		if (collapsedFolders.has(path)) chevron.classList.add('collapsed');
+		chevron.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.97 5.72a.75.75 0 0 1 1.06 0L8 8.69l2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg>';
+	}
 	row.appendChild(chevron);
 
 	const icon = document.createElement('span');
 	icon.className = 'icon';
-	icon.textContent = isLeaf ? (node.isCurrent ? '★' : '⎇') : collapsedFolders.has(path) ? '📁' : '📂';
+	if (isLeaf) {
+		icon.innerHTML = node.kind === 'tag'
+			? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 3.25v4.2l5.8 5.8a1.7 1.7 0 0 0 2.4 0l2.3-2.3a1.7 1.7 0 0 0 0-2.4l-5.8-5.8h-4.7Z"/><circle cx="5.25" cy="5.25" r="1"/></svg>'
+			: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="3.5" r="1.75"/><circle cx="5" cy="12.5" r="1.75"/><circle cx="11.5" cy="5.5" r="1.75"/><path d="M5 5.25v5.5M11.5 7.25v.5A4.75 4.75 0 0 1 6.75 12.5"/></svg>';
+	} else {
+		icon.textContent = collapsedFolders.has(path) ? '📁' : '📂';
+	}
 	row.appendChild(icon);
 
 	const name = document.createElement('span');
@@ -238,9 +256,18 @@ function render(): void {
 		}
 
 		const label = document.createElement('div');
-		label.className = 'section-label';
-		label.textContent = `⌄  ${section.label}`;
+		label.className = 'section-label' + (collapsedSections.has(section.kind) ? ' collapsed' : '');
+		label.innerHTML = '<span class="section-chevron"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.97 5.72a.75.75 0 0 1 1.06 0L8 8.69l2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg></span>';
+		const labelText = document.createElement('span');
+		labelText.textContent = section.label;
+		label.appendChild(labelText);
+		label.addEventListener('click', () => {
+			if (collapsedSections.has(section.kind)) collapsedSections.delete(section.kind);
+			else collapsedSections.add(section.kind);
+			render();
+		});
 		treeEl.appendChild(label);
+		if (collapsedSections.has(section.kind)) continue;
 
 		const sectionRoot: TreeNode = { name: '', children: new Map() };
 		items.forEach((branch) => insert(sectionRoot, branch));

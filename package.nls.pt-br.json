@@ -1,0 +1,11 @@
+{
+  "extension.displayName": "Git Studio",
+  "extension.description": "Um espaço de trabalho Git para Visual Studio Code orientado a listas de alterações, com commits seletivos, histórico, branches e Blame.",
+  "view.gitTools": "Git Studio",
+  "view.gitGraph": "Git Studio",
+  "view.branches": "Branches",
+  "view.commit": "Commit",
+  "view.graph": "Gráfico",
+  "command.toggleBlame": "Git Studio: Alternar Blame embutido",
+  "command.lineHistory": "Git Studio: Mostrar histórico das linhas selecionadas"
+}

@@ -22,7 +22,7 @@ function branchRefAtNode(refs: readonly string[]): string | undefined {
 	const expanded = refs.map((ref) => ref.startsWith('HEAD -> ') ? ref.slice('HEAD -> '.length) : ref);
 	const branches = expanded.filter((ref) => !ref.startsWith('tag: ') && ref !== 'HEAD' && !ref.endsWith('/HEAD'));
 	// Prefer a local branch decoration over origin/foo when both decorate the
-	// same commit. This is where PyCharm visually changes from a feature color
+	// same commit. This is where the graph visually changes from a feature color
 	// to the base branch color (for example feature -> master).
 	return branches.find((ref) => !ref.startsWith('origin/')) ?? branches[0];
 }

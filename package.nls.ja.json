@@ -1,0 +1,11 @@
+{
+  "extension.displayName": "Git Studio",
+  "extension.description": "選択コミット、履歴、ブランチ、Blame を備えた Visual Studio Code 向けのチェンジリスト中心の Git ワークスペースです。",
+  "view.gitTools": "Git Studio",
+  "view.gitGraph": "Git Studio",
+  "view.branches": "ブランチ",
+  "view.commit": "コミット",
+  "view.graph": "グラフ",
+  "command.toggleBlame": "Git Studio: インライン Blame の切り替え",
+  "command.lineHistory": "Git Studio: 選択行の履歴を表示"
+}

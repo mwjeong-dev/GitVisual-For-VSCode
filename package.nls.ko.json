@@ -1,11 +1,11 @@
 {
-  "extension.displayName": "PyCharm Git 도구",
-  "extension.description": "VS Code에서 변경 목록, 부분 스테이징, 커밋 그래프, 인라인 Blame과 라인 이력을 제공합니다.",
-  "view.gitTools": "Git 도구",
-  "view.gitGraph": "Git 그래프",
+  "extension.displayName": "Git Studio",
+  "extension.description": "VS Code에서 changelist 기반 선택 커밋, 커밋 그래프, 브랜치 관리, 인라인 Blame과 라인 이력을 제공합니다.",
+  "view.gitTools": "Git Studio",
+  "view.gitGraph": "Git Studio",
   "view.branches": "브랜치",
   "view.commit": "커밋",
   "view.graph": "그래프",
-  "command.toggleBlame": "Git 도구: 인라인 Blame 켜기/끄기",
-  "command.lineHistory": "Git 도구: 선택 라인 범위 이력 보기"
+  "command.toggleBlame": "Git Studio: 인라인 Blame 켜기/끄기",
+  "command.lineHistory": "Git Studio: 선택 라인 범위 이력 보기"
 }

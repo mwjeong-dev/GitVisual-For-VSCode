@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createTranslator } from '../shared/localization';
 import type { API } from '../gitApi/git.d';
 import { GitRefType } from '../gitApi/refType';
 import { spawnGit } from '../gitApi/spawnGit';
@@ -13,8 +14,7 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 	static readonly viewType = 'gitTools.branchesView';
 
 	private view: vscode.WebviewView | undefined;
-	private readonly ko = vscode.env.language.toLowerCase().startsWith('ko');
-	private text(english: string, korean: string): string { return this.ko ? korean : english; }
+	private readonly text = createTranslator(vscode.env.language);
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
