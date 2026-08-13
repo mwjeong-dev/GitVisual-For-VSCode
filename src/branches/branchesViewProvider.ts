@@ -66,6 +66,17 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 			repo.getBranches({ remote: true }),
 			repo.getRefs({ pattern: 'refs/tags' }),
 		]);
+		const syncCounts = new Map<string, { ahead: number; behind: number }>();
+		await Promise.all(localRefs.flatMap((ref) => ref.name ? [(async () => {
+			const branch = await repo.getBranch(ref.name!);
+			if (!branch.upstream) return;
+			const upstream = branch.upstream.name.startsWith(`${branch.upstream.remote}/`)
+				? branch.upstream.name
+				: `${branch.upstream.remote}/${branch.upstream.name}`;
+			const output = (await spawnGit(repo.rootUri.fsPath, ['rev-list', '--left-right', '--count', `${ref.name}...${upstream}`])).stdout.trim();
+			const [ahead = 0, behind = 0] = output.split(/\s+/).map(Number);
+			syncCounts.set(ref.name!, { ahead, behind });
+		})()] : []));
 		for (const ref of [...localRefs, ...remoteRefs, ...tagRefs]) {
 			if (!ref.name) {
 				continue;
@@ -77,7 +88,8 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 				continue;
 			}
 			seen.add(dedupeKey);
-			branches.push({ kind, name: ref.name, isCurrent: kind === 'local' && ref.name === currentBranchName });
+			const counts = kind === 'local' ? syncCounts.get(ref.name) : undefined;
+			branches.push({ kind, name: ref.name, isCurrent: kind === 'local' && ref.name === currentBranchName, ...counts });
 		}
 		branches.sort((a, b) => a.name.localeCompare(b.name));
 		this.post({ type: 'branches', branches });

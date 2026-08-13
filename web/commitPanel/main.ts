@@ -24,6 +24,8 @@ let renamingChangelistId: string | undefined;
 let creatingChangelist = false;
 const selectedFileUris = new Set<string>();
 const knownFileUris = new Set<string>();
+const COMMIT_BOX_HEIGHT_KEY = 'gitvisual.commitPanel.commitBoxHeight';
+let commitBoxHeight = Number(localStorage.getItem(COMMIT_BOX_HEIGHT_KEY) ?? '270');
 
 const root = document.getElementById('root')!;
 root.innerHTML = `
@@ -35,7 +37,8 @@ root.innerHTML = `
 		</div>
 		<div class="file-list" id="file-list"></div>
 		<div class="diff-view" id="diff-view"></div>
-		<div class="commit-box">
+		<div class="commit-resizer" id="commit-resizer" title="${text('Drag to resize', '드래그하여 크기 조절')}"></div>
+		<div class="commit-box" id="commit-box">
 			<div class="commit-options"><label class="amend-row"><input type="checkbox" id="amend-checkbox"> ${text('Amend', '수정(M)')}</label><select id="commit-target"></select></div>
 			<textarea id="commit-message" placeholder="${text('Commit message', '커밋 메시지')}"></textarea>
 			<div class="commit-actions"><button id="commit-button">${text('Commit', '커밋(I)')}</button><button id="commit-push-button">${text('Commit and Push…', '커밋 및 푸시(P)…')}</button></div>
@@ -90,14 +93,18 @@ style.textContent = `
 	.diff-line input { margin-right: 6px; flex: 0 0 auto; }
 	.diff-line .content { flex: 1 1 auto; }
 
-	.commit-box { flex: 0 0 270px; display: flex; flex-direction: column; padding: 10px 12px; gap: 9px; border-top: 1px solid var(--vscode-panel-border); }
+	.commit-resizer { position: relative; z-index: 2; flex: 0 0 5px; cursor: row-resize; background: var(--vscode-panel-border); touch-action: none; }
+	.commit-resizer::after { content: ''; position: absolute; inset: -3px 0; }
+	.commit-resizer:hover, .commit-resizer.dragging { background: var(--vscode-focusBorder); }
+	body.resizing-commit { cursor: row-resize; user-select: none; }
+	.commit-box { flex: 0 0 270px; display: flex; flex-direction: column; padding: 7px 12px 10px; gap: 7px; }
 	.commit-options { display: flex; align-items: center; gap: 8px; }
 	.commit-options select { width: auto; border: 0; background: transparent; }
 	.commit-actions { display: flex; gap: 10px; }
 	.commit-actions button { min-width: 108px; }
 	.amend-row { display: flex; align-items: center; gap: 4px; font-size: 0.9em; cursor: pointer; }
 	textarea, select, input[type="text"] { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: inherit; }
-	textarea { resize: none; flex: 1; min-height: 120px; padding: 8px; }
+	textarea { resize: none; flex: 1; min-height: 42px; padding: 8px; }
 	button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 8px; cursor: pointer; }
 	button:hover { background: var(--vscode-button-hoverBackground); }
 	.error-banner { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 4px 8px; }
@@ -111,9 +118,52 @@ const commitMessageEl = document.getElementById('commit-message') as HTMLTextAre
 const amendCheckboxEl = document.getElementById('amend-checkbox') as HTMLInputElement;
 const commitButtonEl = document.getElementById('commit-button') as HTMLButtonElement;
 const commitPushButtonEl = document.getElementById('commit-push-button') as HTMLButtonElement;
+const commitBoxEl = document.getElementById('commit-box') as HTMLElement;
+const commitResizerEl = document.getElementById('commit-resizer') as HTMLElement;
+
+function applyCommitBoxHeight(height: number): void {
+	const maxHeight = Math.max(130, window.innerHeight - 140);
+	commitBoxHeight = Math.min(maxHeight, Math.max(130, height));
+	commitBoxEl.style.flexBasis = `${commitBoxHeight}px`;
+}
+
+applyCommitBoxHeight(commitBoxHeight);
+let resizeStartY = 0;
+let resizeStartHeight = 0;
+commitResizerEl.addEventListener('pointerdown', (event) => {
+	event.preventDefault();
+	resizeStartY = event.clientY;
+	resizeStartHeight = commitBoxEl.getBoundingClientRect().height;
+	commitResizerEl.setPointerCapture(event.pointerId);
+	commitResizerEl.classList.add('dragging');
+	document.body.classList.add('resizing-commit');
+});
+commitResizerEl.addEventListener('pointermove', (event) => {
+	if (!commitResizerEl.hasPointerCapture(event.pointerId)) return;
+	applyCommitBoxHeight(resizeStartHeight + resizeStartY - event.clientY);
+});
+const finishCommitResize = (event: PointerEvent): void => {
+	if (commitResizerEl.hasPointerCapture(event.pointerId)) commitResizerEl.releasePointerCapture(event.pointerId);
+	commitResizerEl.classList.remove('dragging');
+	document.body.classList.remove('resizing-commit');
+	localStorage.setItem(COMMIT_BOX_HEIGHT_KEY, String(commitBoxHeight));
+};
+commitResizerEl.addEventListener('pointerup', finishCommitResize);
+commitResizerEl.addEventListener('pointercancel', finishCommitResize);
+window.addEventListener('resize', () => applyCommitBoxHeight(commitBoxHeight));
 document.getElementById('refresh-files')!.addEventListener('click', () => post({ type: 'refresh' }));
 document.getElementById('expand-all')!.addEventListener('click', () => { collapsedGroups.clear(); renderFileList(); });
 document.getElementById('collapse-all')!.addEventListener('click', () => { for (const group of buildGroups()) collapsedGroups.add(group.id); renderFileList(); });
+
+function updateCommitButtons(): void {
+	const count = selectedFileUris.size;
+	commitButtonEl.textContent = count > 0 ? `${text('Commit', '커밋(I)')} (${count})` : text('Commit', '커밋(I)');
+	commitPushButtonEl.textContent = count > 0 ? `${text('Commit and Push…', '커밋 및 푸시(P)…')} (${count})` : text('Commit and Push…', '커밋 및 푸시(P)…');
+	commitButtonEl.disabled = count === 0;
+	commitPushButtonEl.disabled = count === 0;
+}
+
+updateCommitButtons();
 
 amendCheckboxEl.addEventListener('change', () => {
 	if (amendCheckboxEl.checked && commitMessageEl.value.trim().length === 0) {
@@ -240,6 +290,7 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 		if (fileContainer) {
 			updateGroupCheckbox(fileContainer);
 		}
+		updateCommitButtons();
 	});
 	item.appendChild(checkbox);
 
@@ -325,6 +376,7 @@ function renderGroupHeader(group: RenderGroup, fileContainer: HTMLElement): HTML
 				selectedFileUris.delete(file.uri);
 			}
 		}
+		updateCommitButtons();
 	});
 	header.appendChild(checkbox);
 
@@ -512,9 +564,6 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessag
 			files = message.files;
 			const currentUris = new Set(files.map((file) => file.uri));
 			for (const file of files) {
-				if (!knownFileUris.has(file.uri)) {
-					selectedFileUris.add(file.uri);
-				}
 				knownFileUris.add(file.uri);
 			}
 			for (const uri of [...knownFileUris]) {
@@ -530,6 +579,7 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToWebviewMessag
 				currentHunks = [];
 			}
 			renderCommitTargetOptions();
+			updateCommitButtons();
 			renderFileList();
 			renderDiff();
 			break;

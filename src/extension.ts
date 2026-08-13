@@ -33,7 +33,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	const commitPanelProvider = new CommitPanelViewProvider(context.extensionUri, api, changelistStore);
 	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanelProvider),
+		vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanelProvider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}),
 	);
 
 	const graphViewProvider = new GraphViewProvider(context.extensionUri, api);
