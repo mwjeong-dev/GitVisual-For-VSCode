@@ -20,6 +20,5 @@ export type BranchesToExtensionMessage =
 	| { readonly type: 'createBranch'; readonly from: string; readonly suggestedName?: string }
 	| { readonly type: 'createTag'; readonly ref: string }
 	| { readonly type: 'pushBranch'; readonly name: string }
-	| { readonly type: 'createPatch'; readonly kind: 'local' | 'remote' | 'tag'; readonly name: string }
 	| { readonly type: 'updateRef'; readonly kind: 'local' | 'remote' | 'tag'; readonly name: string }
-	| { readonly type: 'deleteRef'; readonly kind: 'local' | 'tag'; readonly name: string };
+	| { readonly type: 'deleteRef'; readonly kind: 'local' | 'remote' | 'tag'; readonly name: string };
