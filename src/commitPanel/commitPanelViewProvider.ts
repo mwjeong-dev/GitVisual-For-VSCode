@@ -8,6 +8,7 @@ import { writeSelectedLinesToIndex } from '../scm/staging';
 import { commitFilesIsolated } from '../scm/commitService';
 import { ChangelistStore } from '../scm/changelistStore';
 import { spawnGit } from '../gitApi/spawnGit';
+import type { PushPreviewPanel } from '../pushPreview/pushPreviewPanel';
 
 type InProgressGitOperation = 'merge' | 'rebase' | 'cherry-pick';
 
@@ -28,6 +29,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		private readonly extensionUri: vscode.Uri,
 		private readonly api: API,
 		private readonly changelistStore: ChangelistStore,
+		private readonly pushPreview: PushPreviewPanel,
 	) {}
 
 	// Phase 1 scope: first repository only. Multi-root repo switching
@@ -105,14 +107,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 					break;
 				case 'commitAndPush':
 					await this.commit(message.uris, message.message, message.amend);
-					await this.repo?.push();
+					await this.pushPreview.show();
 					break;
 				case 'commitChangelist':
 					await this.commitChangelist(message.changelistId, message.uris, message.message, message.amend);
 					break;
 				case 'commitChangelistAndPush':
 					await this.commitChangelist(message.changelistId, message.uris, message.message, message.amend);
-					await this.repo?.push();
+					await this.pushPreview.show();
 					break;
 				case 'createChangelist':
 					await this.changelistStore.create(message.name);
