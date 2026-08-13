@@ -1,6 +1,9 @@
 .vscode/**
+.claude/**
+.github/**
 src/**
 web/**
+test/**
 out/**
 out-web/**
 node_modules/**
@@ -10,3 +13,5 @@ tsconfig.json
 web/tsconfig.json
 **/*.map
 **/.eslintrc*
+gitvisual-vscode-*.vsix
+git-studio-vscode-*.vsix

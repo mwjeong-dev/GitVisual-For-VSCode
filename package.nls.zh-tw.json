@@ -1,11 +1,11 @@
 {
-  "extension.displayName": "Git Studio",
+  "extension.displayName": "GitVisual (Preview)",
   "extension.description": "以變更清單為中心的 Visual Studio Code Git 工作區，支援選擇性提交、歷史記錄、分支與 Blame。",
-  "view.gitTools": "Git Studio",
-  "view.gitGraph": "Git Studio",
+  "view.gitTools": "GitVisual",
+  "view.gitGraph": "GitVisual",
   "view.branches": "分支",
   "view.commit": "提交",
   "view.graph": "圖形",
-  "command.toggleBlame": "Git Studio: 切換行內 Blame",
-  "command.lineHistory": "Git Studio: 顯示所選行的歷史記錄"
+  "command.toggleBlame": "GitVisual: 切換行內 Blame",
+  "command.lineHistory": "GitVisual: 顯示所選行的歷史記錄"
 }

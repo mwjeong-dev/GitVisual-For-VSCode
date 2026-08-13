@@ -16,6 +16,10 @@ let commits: GraphCommitDto[] = [];
 let selectedHash: string | undefined;
 let selectedRef: string | undefined;
 let refs: string[] = [];
+const DETAILS_SPLIT_KEY = 'gitvisual.graph.detailsSplit';
+let detailsSplit = Number(localStorage.getItem(DETAILS_SPLIT_KEY) ?? '0.65');
+if (!Number.isFinite(detailsSplit)) detailsSplit = 0.65;
+detailsSplit = Math.min(0.85, Math.max(0.2, detailsSplit));
 
 const root = document.getElementById('root')!;
 root.innerHTML = `
@@ -37,8 +41,8 @@ style.textContent = `
 	* { box-sizing: border-box; }
 	html, body, #root { height: 100%; }
 	body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 0; margin: 0; overflow: hidden; }
-	.shell { display: grid; grid-template-columns: minmax(480px, 2.2fr) minmax(280px, 1fr); height: 100%; }
-	.left-pane { min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--vscode-panel-border); }
+	.shell { display: grid; grid-template-columns: minmax(480px, 2.2fr) minmax(280px, 1fr); height: 100%; min-height: 0; overflow: hidden; }
+	.left-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--vscode-panel-border); }
 	.toolbar { height: 38px; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
 	.search-wrap { flex: 1; max-width: 440px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); background: var(--vscode-input-background); }
 	.search-wrap:focus-within { border-color: var(--vscode-focusBorder); }
@@ -55,7 +59,7 @@ style.textContent = `
 	.branch-option:hover { background: var(--vscode-list-hoverBackground); }
 	.toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
 	.column-head { display: grid; grid-template-columns: minmax(240px, 1fr) 145px 130px; padding: 4px 12px 4px 54px; opacity: .65; font-size: 11px; border-bottom: 1px solid var(--vscode-panel-border); }
-	.graph-container { position: relative; flex: 1; min-height: 0; overflow: auto; }
+	.graph-container { position: relative; flex: 1 1 0; width: 100%; min-height: 0; overflow-x: auto; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable; }
 	.graph-container svg { position: absolute; top: 0; left: 8px; pointer-events: none; }
 	.graph-rows { position: relative; min-width: 580px; }
 	.graph-row { display: grid; grid-template-columns: minmax(240px, 1fr) 145px 130px; align-items: center; white-space: nowrap; cursor: default; padding-right: 12px; border-bottom: 1px solid transparent; }
@@ -71,12 +75,16 @@ style.textContent = `
 	.date { opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 	.details { min-width: 0; display: flex; flex-direction: column; overflow: auto; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
 	.empty { margin: auto; opacity: .55; }
-	.detail-header { flex: 0 0 auto; padding: 18px 20px 14px; border-top: 1px solid var(--vscode-panel-border); min-height: 150px; }
+	.detail-header { flex: 1 1 0; min-height: 90px; overflow: auto; padding: 18px 20px 14px; }
 	.detail-subject { font: 600 16px/1.4 var(--vscode-editor-font-family); margin-bottom: 14px; white-space: pre-wrap; }
 	.detail-meta { color: var(--vscode-descriptionForeground); line-height: 1.6; overflow-wrap: anywhere; }
 	.detail-meta code { color: var(--vscode-foreground); }
 	.refs { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
-	.files { flex: 1 1 auto; min-height: 120px; overflow: auto; }
+	.files { flex: 0 0 65%; min-height: 80px; overflow: auto; }
+	.details-resizer { position: relative; z-index: 2; flex: 0 0 5px; cursor: row-resize; background: var(--vscode-panel-border); touch-action: none; }
+	.details-resizer::after { content: ''; position: absolute; inset: -3px 0; }
+	.details-resizer:hover, .details-resizer.dragging { background: var(--vscode-focusBorder); }
+	body.resizing-details { cursor: row-resize; user-select: none; }
 	.file-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-weight: 600; background: var(--vscode-sideBarSectionHeader-background); }
 	.file-list { padding: 4px 0 12px; }
 	.file-row { display: grid; grid-template-columns: 20px 1fr 24px; gap: 5px; align-items: center; padding: 5px 14px; cursor: pointer; }
@@ -101,6 +109,27 @@ const branchFilterEl = document.getElementById('branch-filter')!;
 const branchButtonEl = document.getElementById('branch-button') as HTMLButtonElement;
 const clearBranchEl = document.getElementById('clear-branch') as HTMLButtonElement;
 const branchMenuEl = document.getElementById('branch-menu')!;
+
+// Chromium normally scrolls this element natively. Explicit handling keeps
+// wheel scrolling reliable inside a VS Code webview when the graph is wider
+// than the panel or an absolutely positioned SVG sits over the row area.
+containerEl.addEventListener('wheel', (event) => {
+	const lineHeight = ROW_HEIGHT;
+	const pageHeight = Math.max(containerEl.clientHeight, lineHeight);
+	const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+		? lineHeight
+		: event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? pageHeight : 1;
+	const deltaY = event.deltaY * scale;
+	const deltaX = event.deltaX * scale;
+	if (event.shiftKey && Math.abs(deltaY) > Math.abs(deltaX)) {
+		containerEl.scrollLeft += deltaY;
+	} else {
+		containerEl.scrollTop += deltaY;
+		containerEl.scrollLeft += deltaX;
+	}
+	if (deltaX !== 0 || deltaY !== 0) event.preventDefault();
+}, { passive: false });
+
 document.getElementById('refresh')!.addEventListener('click', () => post({ type: 'refresh' }));
 searchEl.addEventListener('input', renderRows);
 branchButtonEl.addEventListener('click', (event) => { event.stopPropagation(); branchMenuEl.classList.toggle('open'); });
@@ -240,7 +269,32 @@ function renderDetails(details: GraphCommitDetailsDto): void {
 		list.appendChild(row);
 	}
 	const files = document.createElement('div'); files.className = 'files'; files.append(fileHead, list);
-	detailsEl.append(files, header);
+	files.style.flexBasis = `${detailsSplit * 100}%`;
+	const resizer = document.createElement('div');
+	resizer.className = 'details-resizer';
+	resizer.title = text('Drag to resize', '드래그하여 크기 조절');
+	resizer.addEventListener('pointerdown', (event) => {
+		event.preventDefault();
+		resizer.setPointerCapture(event.pointerId);
+		resizer.classList.add('dragging');
+		document.body.classList.add('resizing-details');
+	});
+	resizer.addEventListener('pointermove', (event) => {
+		if (!resizer.hasPointerCapture(event.pointerId)) return;
+		const bounds = detailsEl.getBoundingClientRect();
+		if (bounds.height <= 0) return;
+		detailsSplit = Math.min(0.85, Math.max(0.2, (event.clientY - bounds.top) / bounds.height));
+		files.style.flexBasis = `${detailsSplit * 100}%`;
+	});
+	const finishResize = (event: PointerEvent): void => {
+		if (resizer.hasPointerCapture(event.pointerId)) resizer.releasePointerCapture(event.pointerId);
+		resizer.classList.remove('dragging');
+		document.body.classList.remove('resizing-details');
+		localStorage.setItem(DETAILS_SPLIT_KEY, String(detailsSplit));
+	};
+	resizer.addEventListener('pointerup', finishResize);
+	resizer.addEventListener('pointercancel', finishResize);
+	detailsEl.append(files, resizer, header);
 }
 
 function showError(message: string): void {

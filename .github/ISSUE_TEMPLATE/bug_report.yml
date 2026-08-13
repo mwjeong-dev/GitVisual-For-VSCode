@@ -1,0 +1,36 @@
+name: Bug report
+description: Report unexpected behavior in GitVisual
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve GitVisual Preview. Remove credentials and private repository data before submitting logs.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, VS Code version, Git version, and GitVisual version
+      placeholder: Windows 11, VS Code 1.xx, Git 2.xx, GitVisual 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Describe the repository state and exact actions you performed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Include GitVisual Output or error messages after removing sensitive information.
+    validations:
+      required: true

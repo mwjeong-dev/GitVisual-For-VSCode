@@ -56,7 +56,7 @@ export class ChangelistScmProvider implements vscode.Disposable {
 		private readonly api: API,
 		private readonly store: ChangelistStore,
 	) {
-		this.sourceControl = vscode.scm.createSourceControl('gitToolsChangelists', 'Git Studio Changelists');
+		this.sourceControl = vscode.scm.createSourceControl('gitToolsChangelists', 'GitVisual Changelists');
 		this.disposables.push(this.sourceControl);
 		this.disposables.push(store.onDidChangeChangelists(() => this.refresh()));
 	}

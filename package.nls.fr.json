@@ -1,11 +1,11 @@
 {
-  "extension.displayName": "Git Studio",
+  "extension.displayName": "GitVisual (Preview)",
   "extension.description": "Un espace de travail Git pour Visual Studio Code axé sur les listes de modifications, avec commits sélectifs, historique, branches et Blame.",
-  "view.gitTools": "Git Studio",
-  "view.gitGraph": "Git Studio",
+  "view.gitTools": "GitVisual",
+  "view.gitGraph": "GitVisual",
   "view.branches": "Branches",
   "view.commit": "Commit",
   "view.graph": "Graphe",
-  "command.toggleBlame": "Git Studio : Activer/désactiver le Blame en ligne",
-  "command.lineHistory": "Git Studio : Afficher l’historique des lignes sélectionnées"
+  "command.toggleBlame": "GitVisual : Activer/désactiver le Blame en ligne",
+  "command.lineHistory": "GitVisual : Afficher l’historique des lignes sélectionnées"
 }

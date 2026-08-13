@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { API, Repository } from '../gitApi/git.d';
 import type { DiffHunk } from '../shared/protocol/diff';
 import type { ChangedFileDto, ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../shared/protocol/commitPanel';
@@ -6,6 +7,9 @@ import { getDiffForFile, listChangedFiles } from './diffModel';
 import { writeSelectedLinesToIndex } from '../scm/staging';
 import { commitFilesIsolated } from '../scm/commitService';
 import { ChangelistStore } from '../scm/changelistStore';
+import { spawnGit } from '../gitApi/spawnGit';
+
+type InProgressGitOperation = 'merge' | 'rebase' | 'cherry-pick';
 
 interface FileState {
 	readonly info: ChangedFileDto;
@@ -194,6 +198,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		if (!repo) {
 			return;
 		}
+		await this.assertSelectiveCommitIsSafe(repo);
 		const finalMessage = await this.resolveCommitMessage(repo, message, amend);
 		if (!finalMessage) {
 			return;
@@ -211,6 +216,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		if (!repo || !changelist) {
 			return;
 		}
+		await this.assertSelectiveCommitIsSafe(repo);
 		const finalMessage = await this.resolveCommitMessage(repo, message, amend);
 		if (!finalMessage) {
 			return;
@@ -222,6 +228,30 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 			this.partiallySelectedUris.delete(uri);
 		}
 		await this.sendFileList();
+	}
+
+	private async assertSelectiveCommitIsSafe(repo: Repository): Promise<void> {
+		const operation = await this.getInProgressGitOperation(repo);
+		if (!operation) {
+			return;
+		}
+		throw new Error(
+			`Selective commits are disabled while a ${operation} is in progress. Resolve or abort it with VS Code's Source Control tools first.`,
+		);
+	}
+
+	private async getInProgressGitOperation(repo: Repository): Promise<InProgressGitOperation | undefined> {
+		const root = repo.rootUri.fsPath;
+		const exists = async (gitPath: string): Promise<boolean> => {
+			const resolved = (await spawnGit(root, ['rev-parse', '--git-path', gitPath])).stdout.trim();
+			if (!resolved) return false;
+			const uri = vscode.Uri.file(path.isAbsolute(resolved) ? resolved : path.join(root, resolved));
+			return vscode.workspace.fs.stat(uri).then(() => true, () => false);
+		};
+		if (await exists('MERGE_HEAD')) return 'merge';
+		if (await exists('rebase-merge') || await exists('rebase-apply')) return 'rebase';
+		if (await exists('CHERRY_PICK_HEAD')) return 'cherry-pick';
+		return undefined;
 	}
 
 	private getHtml(webview: vscode.Webview): string {
