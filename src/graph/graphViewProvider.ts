@@ -129,7 +129,11 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 				break;
 			}
 			case 'deleteCommit': await this.deleteCommit(hash); break;
-			case 'editMessage': await this.editCommitMessage(hash); break;
+			case 'editMessage': {
+				const rewrittenHash = await this.editCommitMessage(hash);
+				if (rewrittenHash) this.post({ type: 'selectCommitAfterRewrite', hash: rewrittenHash });
+				break;
+			}
 			case 'fixup': await spawnGit(root, ['commit', '--fixup', hash]); break;
 			case 'rebase': {
 				const yes = await vscode.window.showWarningMessage(this.text(`Rebase the current branch onto ${hash.slice(0, 8)}?`, `현재 브랜치를 ${hash.slice(0, 8)} 위로 리베이스할까요?`), { modal: true }, this.text('Rebase', '리베이스'));
@@ -207,7 +211,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	private async editCommitMessage(hash: string): Promise<void> {
+	private async editCommitMessage(hash: string): Promise<string | undefined> {
 		const context = await this.validateHistoryRewrite(hash);
 		const commit = await this.repo!.getCommit(hash);
 		const message = await vscode.window.showInputBox({
@@ -216,16 +220,16 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 			value: commit.message,
 			ignoreFocusOut: true,
 		});
-		if (!message?.trim() || message.trim() === commit.message.trim()) return;
+		if (!message?.trim() || message.trim() === commit.message.trim()) return undefined;
 		const confirmed = await vscode.window.showWarningMessage(
 			this.text(`Rewrite commit ${hash.slice(0, 8)} and later history?`, `커밋 ${hash.slice(0, 8)}과(와) 이후 기록을 변경할까요?`),
 			{ modal: true },
 			this.text('Edit Commit Message', '커밋 메시지 편집'),
 		);
-		if (!confirmed) return;
+		if (!confirmed) return undefined;
 		if (context.head === hash) {
 			await this.repo!.commit(message.trim(), { amend: true });
-			return;
+			return (await spawnGit(context.root, ['rev-parse', 'HEAD'])).stdout.trim();
 		}
 		const metadata = (await spawnGit(context.root, ['show', '-s', '--format=%T%x00%an%x00%ae%x00%aI', hash])).stdout.trimEnd().split('\0');
 		const [tree, authorName, authorEmail, authorDate] = metadata;
@@ -234,6 +238,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 			env: { GIT_AUTHOR_NAME: authorName, GIT_AUTHOR_EMAIL: authorEmail, GIT_AUTHOR_DATE: authorDate },
 		})).stdout.trim();
 		await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', replacement, hash, context.branch]);
+		return replacement;
 	}
 
 	private async openComparison(leftRef: string, rightRef: string): Promise<void> {

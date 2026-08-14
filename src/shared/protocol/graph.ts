@@ -30,6 +30,7 @@ export type GraphCommitMetadataDto = Omit<GraphCommitDetailsDto, 'files'>;
 export type ExtensionToGraphMessage =
 	| { readonly type: 'commits'; readonly commits: GraphCommitDto[]; readonly ref?: string }
 	| { readonly type: 'refs'; readonly refs: string[] }
+	| { readonly type: 'selectCommitAfterRewrite'; readonly hash: string }
 	| { readonly type: 'commitMetadata'; readonly metadata: GraphCommitMetadataDto }
 	| { readonly type: 'commitDetails'; readonly details: GraphCommitDetailsDto }
 	| { readonly type: 'error'; readonly message: string };

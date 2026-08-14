@@ -472,6 +472,8 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToGraphMessage>
 			if (selected) showDetailsLoading(metadataFromCommit(selected));
 			post({ type: 'selectCommit', hash: selectedHash });
 		}
+	} else if (message.type === 'selectCommitAfterRewrite') {
+		selectedHash = message.hash;
 	} else if (message.type === 'commitMetadata' && message.metadata.hash === selectedHash) {
 		showDetailsLoading(message.metadata);
 	} else if (message.type === 'commitDetails' && message.details.hash === selectedHash) {

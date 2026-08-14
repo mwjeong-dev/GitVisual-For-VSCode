@@ -211,19 +211,40 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 
 	private async getSyncCounts(repoRoot: string): Promise<Map<string, { ahead: number; behind: number }>> {
 		const counts = new Map<string, { ahead: number; behind: number }>();
-		const output = (await spawnGit(repoRoot, [
-			'for-each-ref',
-			'--format=%(refname:short)%00%(upstream:short)%00%(upstream:track,nobracket)',
-			'refs/heads',
-		], { env: { LC_ALL: 'C', LANG: 'C' } })).stdout;
+		const [output, remoteOutput] = await Promise.all([
+			spawnGit(repoRoot, [
+				'for-each-ref',
+				'--format=%(refname:short)%00%(upstream:short)%00%(upstream:track,nobracket)',
+				'refs/heads',
+			], { env: { LC_ALL: 'C', LANG: 'C' } }).then((result) => result.stdout),
+			spawnGit(repoRoot, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes']).then((result) => result.stdout),
+		]);
+		const remoteBranches = remoteOutput.split(/\r?\n/).filter((name) => name && !name.endsWith('/HEAD'));
+		const fallbackComparisons: Promise<void>[] = [];
 		for (const line of output.split(/\r?\n/)) {
 			if (!line) continue;
 			const [branch, upstream, tracking = ''] = line.split('\0');
-			if (!branch || !upstream) continue;
-			const ahead = Number(/ahead (\d+)/.exec(tracking)?.[1] ?? 0);
-			const behind = Number(/behind (\d+)/.exec(tracking)?.[1] ?? 0);
-			counts.set(branch, { ahead, behind });
+			if (!branch) continue;
+			if (upstream) {
+				const ahead = Number(/ahead (\d+)/.exec(tracking)?.[1] ?? 0);
+				const behind = Number(/behind (\d+)/.exec(tracking)?.[1] ?? 0);
+				counts.set(branch, { ahead, behind });
+				continue;
+			}
+			const originMatch = `origin/${branch}`;
+			const sameNameRemotes = remoteBranches.filter((name) => name.endsWith(`/${branch}`));
+			const inferredUpstream = remoteBranches.includes(originMatch)
+				? originMatch
+				: sameNameRemotes.length === 1 ? sameNameRemotes[0] : undefined;
+			if (!inferredUpstream) continue;
+			fallbackComparisons.push((async () => {
+				const comparison = (await spawnGit(repoRoot, [
+					'rev-list', '--left-right', '--count', `refs/heads/${branch}...refs/remotes/${inferredUpstream}`,
+				])).stdout.trim().split(/\s+/);
+				counts.set(branch, { ahead: Number(comparison[0] ?? 0), behind: Number(comparison[1] ?? 0) });
+			})());
 		}
+		await Promise.all(fallbackComparisons);
 		return counts;
 	}
 
@@ -240,18 +261,36 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 			await repo.fetch(remote);
 		} else {
 			const branch = await repo.getBranch(name);
-			if (!branch.upstream) {
+			const upstream = branch.upstream ?? await this.getInferredUpstream(repo.rootUri.fsPath, name);
+			if (!upstream) {
 				throw new Error(this.text('The selected branch has no upstream.', '선택한 브랜치에 upstream이 없습니다.'));
 			}
 			if (repo.state.HEAD?.name === name) {
-				await repo.pull();
+				if (branch.upstream) await repo.pull();
+				else await spawnGit(repo.rootUri.fsPath, ['pull', upstream.remote, upstream.name]);
 			} else {
-				await repo.fetch(branch.upstream.remote, `${branch.upstream.name}:${name}`);
+				await repo.fetch(upstream.remote, `${upstream.name}:${name}`);
 			}
 		}
 		await repo.status();
 		await this.sendBranches();
 		void vscode.window.showInformationMessage(this.text(`Updated ${name}.`, `${name}을(를) 업데이트했습니다.`));
+	}
+
+	private async getInferredUpstream(repoRoot: string, branchName: string): Promise<{ remote: string; name: string } | undefined> {
+		const repo = this.repo;
+		if (!repo) return undefined;
+		const remoteRefs = (await spawnGit(repoRoot, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes'])).stdout
+			.split(/\r?\n/)
+			.filter((name) => name && !name.endsWith('/HEAD'));
+		const remoteNames = repo.state.remotes.map((remote) => remote.name).sort((a, b) => b.length - a.length);
+		const matches = remoteRefs.flatMap((ref) => {
+			const remote = remoteNames.find((candidate) => ref.startsWith(`${candidate}/`));
+			if (!remote) return [];
+			const name = ref.slice(remote.length + 1);
+			return name === branchName ? [{ remote, name }] : [];
+		});
+		return matches.find((match) => match.remote === 'origin') ?? (matches.length === 1 ? matches[0] : undefined);
 	}
 
 	private async deleteRef(kind: 'local' | 'remote' | 'tag', name: string): Promise<void> {
