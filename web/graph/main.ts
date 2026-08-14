@@ -49,15 +49,18 @@ style.textContent = `
 	.search-wrap:focus-within { border-color: var(--vscode-focusBorder); }
 	.search-wrap input { width: 100%; border: 0; outline: 0; color: var(--vscode-input-foreground); background: transparent; font: inherit; }
 	.toolbar button { margin-left: auto; border: 0; padding: 3px 8px; font-size: 17px; cursor: pointer; color: var(--vscode-foreground); background: transparent; }
-	.branch-filter { position: relative; }
+	.branch-filter { position: relative; display: inline-flex; align-items: center; min-width: 0; border: 1px solid transparent; border-radius: 5px; }
+	.branch-filter.active { color: var(--vscode-foreground); background: var(--vscode-list-inactiveSelectionBackground); border-color: var(--vscode-panel-border); }
 	.toolbar .branch-filter button { margin: 0; font-size: 13px; white-space: nowrap; }
-	.toolbar .branch-filter #branch-button { display: inline-flex; align-items: center; gap: 3px; }
+	.toolbar .branch-filter #branch-button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 245px; height: 27px; padding: 3px 7px; border-radius: 4px; }
+	.branch-button-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
 	.branch-button-chevron { display: inline-flex; flex: 0 0 12px; width: 12px; height: 12px; align-items: center; justify-content: center; transition: transform 100ms ease; }
 	.branch-button-chevron svg { display: block; width: 12px; height: 12px; }
 	.branch-filter:has(.branch-menu.open) .branch-button-chevron { transform: rotate(180deg); }
-	.toolbar .branch-filter #clear-branch { display: none; margin-left: -5px; padding-left: 3px; }
+	.toolbar .branch-filter #clear-branch { display: none; flex: 0 0 25px; width: 25px; height: 21px; padding: 0; border-left: 1px solid var(--vscode-panel-border); border-radius: 0; line-height: 20px; }
 	.toolbar .branch-filter.active #clear-branch { display: inline-block; }
-	.branch-filter.active button { color: var(--vscode-textLink-foreground); background: var(--vscode-list-hoverBackground); border-radius: 3px; }
+	.branch-filter.active #branch-button { color: var(--vscode-foreground); background: transparent; }
+	.branch-filter.active #branch-button:hover, .branch-filter.active #clear-branch:hover { background: var(--vscode-toolbar-hoverBackground); }
 	.branch-menu { display: none; position: absolute; z-index: 20; top: 30px; left: 0; min-width: 240px; max-height: 330px; overflow: auto; padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 6px; background: var(--vscode-menu-background, var(--vscode-editor-background)); box-shadow: 0 5px 16px #0008; }
 	.branch-menu.open { display: block; }
 	.branch-option { display: grid; grid-template-columns: 17px minmax(0, 1fr) 15px; align-items: center; gap: 7px; min-height: 29px; padding: 4px 7px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
@@ -165,7 +168,7 @@ window.addEventListener('click', () => branchMenuEl.classList.remove('open'));
 function renderBranchFilter(): void {
 	branchFilterEl.classList.toggle('active', Boolean(selectedRef));
 	branchButtonEl.innerHTML = '';
-	const buttonLabel = document.createElement('span');
+	const buttonLabel = document.createElement('span'); buttonLabel.className = 'branch-button-label';
 	buttonLabel.textContent = selectedRef ? `${text('Branch', '브랜치')}: ${selectedRef}` : text('Branch', '브랜치');
 	const buttonChevron = document.createElement('span'); buttonChevron.className = 'branch-button-chevron';
 	buttonChevron.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.97 5.72a.75.75 0 0 1 1.06 0L8 8.69l2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg>';
