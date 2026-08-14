@@ -1,10 +1,9 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { API } from '../gitApi/git.d';
-import type { ExtensionToGraphMessage, GraphToExtensionMessage } from '../shared/protocol/graph';
+import type { ExtensionToGraphMessage, GraphCommitDetailsDto, GraphToExtensionMessage } from '../shared/protocol/graph';
 import type { GraphCommitDto } from '../shared/protocol/graph';
 import { loadCommits } from './logReader';
-import { statusLabel } from '../gitApi/statusLabels';
 import { spawnGit } from '../gitApi/spawnGit';
 import { createTranslator } from '../shared/localization';
 
@@ -15,6 +14,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private view: vscode.WebviewView | undefined;
 	private commits: GraphCommitDto[] = [];
+	private readonly detailsCache = new Map<string, GraphCommitDetailsDto>();
 	private selectedRef: string | undefined;
 	private loadGeneration = 0;
 
@@ -55,6 +55,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private async loadAndSend(): Promise<void> {
 		const generation = ++this.loadGeneration;
+		this.detailsCache.clear();
 		const repo = this.repo;
 		if (!repo) {
 			this.post({ type: 'commits', commits: [] });
@@ -181,30 +182,54 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private readonly text = createTranslator(vscode.env.language);
 
+	private async loadChangedFiles(root: string, baseRef: string, hash: string): Promise<GraphCommitDetailsDto['files']> {
+		// Name/status output is enough for the tree. Avoiding the higher-level
+		// diff API also avoids expensive rename detection on large commits.
+		const { stdout } = await spawnGit(root, ['diff', '--name-status', '--no-renames', '-z', baseRef, hash, '--']);
+		const fields = stdout.split('\0');
+		const labels: Record<string, string> = {
+			A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type Changed', U: 'Unmerged', X: 'Changed', B: 'Changed',
+		};
+		const files: GraphCommitDetailsDto['files'][number][] = [];
+		for (let index = 0; index + 1 < fields.length; index += 2) {
+			const statusCode = fields[index].slice(0, 1);
+			const relativePath = fields[index + 1];
+			if (!relativePath) continue;
+			files.push({
+				uri: vscode.Uri.file(path.join(root, relativePath)).toString(),
+				path: relativePath.replace(/\\/g, '/'),
+				status: labels[statusCode] ?? 'Changed',
+			});
+		}
+		return files;
+	}
+
 	private async sendCommitDetails(hash: string): Promise<void> {
 		const repo = this.repo;
 		if (!repo) return;
-		const commit = await repo.getCommit(hash);
-		const baseRef = commit.parents[0] ?? EMPTY_TREE_SHA;
-		const changes = await repo.diffBetween(baseRef, hash);
+		const cached = this.detailsCache.get(hash);
+		if (cached) {
+			this.post({ type: 'commitDetails', details: cached });
+			return;
+		}
 		const graphCommit = this.commits.find((item) => item.hash === hash);
-		this.post({
-			type: 'commitDetails',
-			details: {
-				hash,
-				parents: commit.parents,
-				authorName: commit.authorName ?? graphCommit?.authorName ?? '',
-				authorEmail: commit.authorEmail ?? '',
-				date: commit.authorDate?.toISOString() ?? graphCommit?.date ?? '',
-				message: commit.message,
-				refs: graphCommit?.refs ?? [],
-				files: changes.map((change) => ({
-					uri: change.uri.toString(),
-					path: vscode.workspace.asRelativePath(change.uri, false),
-					status: statusLabel(change.status),
-				})),
-			},
-		});
+		const baseRef = graphCommit?.parents[0] ?? EMPTY_TREE_SHA;
+		const commitPromise = repo.getCommit(hash);
+		const filesPromise = this.loadChangedFiles(repo.rootUri.fsPath, baseRef, hash);
+		const commit = await commitPromise;
+		const metadata = {
+			hash,
+			parents: commit.parents,
+			authorName: commit.authorName ?? graphCommit?.authorName ?? '',
+			authorEmail: commit.authorEmail ?? '',
+			date: commit.authorDate?.toISOString() ?? graphCommit?.date ?? '',
+			message: commit.message,
+			refs: graphCommit?.refs ?? [],
+		};
+		this.post({ type: 'commitMetadata', metadata });
+		const details: GraphCommitDetailsDto = { ...metadata, files: await filesPromise };
+		this.detailsCache.set(hash, details);
+		this.post({ type: 'commitDetails', details });
 	}
 
 	private async openFile(hash: string, uri: vscode.Uri): Promise<void> {

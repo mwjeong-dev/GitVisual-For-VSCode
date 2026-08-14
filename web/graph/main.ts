@@ -1,6 +1,7 @@
 import type {
 	ExtensionToGraphMessage,
 	GraphCommitDetailsDto,
+	GraphCommitMetadataDto,
 	GraphCommitDto,
 	GraphToExtensionMessage,
 } from '../../src/shared/protocol/graph';
@@ -75,6 +76,10 @@ style.textContent = `
 	.date { opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 	.details { min-width: 0; display: flex; flex-direction: column; overflow: auto; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
 	.empty { margin: auto; opacity: .55; }
+	.details-loading { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--vscode-descriptionForeground); }
+	.details-loading-pane { flex: 0 0 65%; min-height: 80px; display: flex; }
+	.details-spinner { width: 22px; height: 22px; border: 2px solid var(--vscode-panel-border); border-top-color: var(--vscode-progressBar-background, var(--vscode-focusBorder)); border-radius: 50%; animation: details-spin .75s linear infinite; }
+	@keyframes details-spin { to { transform: rotate(360deg); } }
 	.detail-header { flex: 1 1 0; min-height: 90px; overflow: auto; padding: 18px 20px 14px; }
 	.detail-subject { font: 600 16px/1.4 var(--vscode-editor-font-family); margin-bottom: 14px; white-space: pre-wrap; }
 	.detail-meta { color: var(--vscode-descriptionForeground); line-height: 1.6; overflow-wrap: anywhere; }
@@ -85,7 +90,10 @@ style.textContent = `
 	.details-resizer::after { content: ''; position: absolute; inset: -3px 0; }
 	.details-resizer:hover, .details-resizer.dragging { background: var(--vscode-focusBorder); }
 	body.resizing-details { cursor: row-resize; user-select: none; }
-	.file-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-weight: 600; background: var(--vscode-sideBarSectionHeader-background); }
+	.file-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 7px 14px; font-weight: 600; background: var(--vscode-sideBarSectionHeader-background); }
+	.file-count { flex: 0 0 auto; }
+	.file-search { flex: 1 1 auto; min-width: 80px; max-width: 220px; margin-left: auto; padding: 3px 7px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); outline: 0; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; font-weight: 400; }
+	.file-search:focus { border-color: var(--vscode-focusBorder); }
 	.file-list { padding: 4px 0 12px; }
 	.file-row, .file-folder { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 2px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 	.file-row:hover, .file-folder:hover { background: var(--vscode-list-hoverBackground); }
@@ -97,6 +105,7 @@ style.textContent = `
 	.folder-children.collapsed { display: none; }
 	.file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.file-status { flex: 0 0 auto; margin-left: auto; font-weight: 700; color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+	.file-list-empty { padding: 18px 14px; color: var(--vscode-descriptionForeground); text-align: center; }
 	.error-banner { position: absolute; z-index: 5; left: 8px; right: 8px; padding: 6px 10px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); }
 	.context-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; width: min(350px, calc(100vw - 12px)); padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 7px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, #252526); box-shadow: 0 5px 18px #0009; }
 	.context-title { padding: 3px 9px 2px; color: var(--vscode-descriptionForeground); font-size: 10px; font-weight: 600; text-transform: uppercase; }
@@ -170,6 +179,45 @@ function matchingCommits(): GraphCommitDto[] {
 	return commits.filter((commit) => [commit.hash, commit.subject, commit.authorName, ...commit.refs].some((value) => value.toLocaleLowerCase().includes(query)));
 }
 
+function createDetailHeader(details: GraphCommitMetadataDto): HTMLElement {
+	const header = document.createElement('div'); header.className = 'detail-header';
+	const subject = document.createElement('div'); subject.className = 'detail-subject'; subject.textContent = details.message;
+	const meta = document.createElement('div'); meta.className = 'detail-meta';
+	meta.innerHTML = `<code>${details.hash.slice(0, 8)}</code> · ${formatDate(details.date, true)}<br>`;
+	const author = document.createElement('span'); author.textContent = `${details.authorName}${details.authorEmail ? ` <${details.authorEmail}>` : ''}`; meta.appendChild(author);
+	header.append(subject, meta);
+	if (details.refs.length) {
+		const refs = document.createElement('div'); refs.className = 'refs';
+		for (const ref of details.refs) { const badge = document.createElement('span'); badge.className = 'ref-badge'; badge.textContent = ref; refs.appendChild(badge); }
+		header.appendChild(refs);
+	}
+	return header;
+}
+
+function metadataFromCommit(commit: GraphCommitDto): GraphCommitMetadataDto {
+	return { hash: commit.hash, parents: commit.parents, authorName: commit.authorName, authorEmail: '', date: commit.date, message: commit.subject, refs: commit.refs };
+}
+
+function globPattern(pattern: string): RegExp {
+	const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+	return new RegExp(`^${escaped}$`, 'i');
+}
+
+function showDetailsLoading(metadata: GraphCommitMetadataDto): void {
+	detailsEl.innerHTML = '';
+	const files = document.createElement('div'); files.className = 'details-loading-pane';
+	files.style.flexBasis = `${detailsSplit * 100}%`;
+	const loading = document.createElement('div'); loading.className = 'details-loading';
+	loading.setAttribute('role', 'status');
+	loading.setAttribute('aria-live', 'polite');
+	const spinner = document.createElement('span'); spinner.className = 'details-spinner'; spinner.setAttribute('aria-hidden', 'true');
+	const label = document.createElement('span'); label.textContent = text('Loading changed files…', '변경된 파일을 불러오는 중…');
+	loading.append(spinner, label);
+	files.appendChild(loading);
+	const divider = document.createElement('div'); divider.className = 'details-resizer';
+	detailsEl.append(files, divider, createDetailHeader(metadata));
+}
+
 function renderRows(): void {
 	containerEl.querySelector('svg')?.remove();
 	const layout = layoutCommits(matchingCommits());
@@ -202,7 +250,7 @@ function renderRows(): void {
 		const date = document.createElement('span'); date.className = 'date'; date.textContent = formatDate(node.date);
 		row.append(commitCell, author, date);
 		row.title = `${node.hash}\n${node.subject}\n${node.authorName} · ${node.date}`;
-		row.addEventListener('click', () => { selectedHash = node.hash; renderRows(); post({ type: 'selectCommit', hash: node.hash }); });
+		row.addEventListener('click', () => { selectedHash = node.hash; renderRows(); showDetailsLoading(metadataFromCommit(node)); post({ type: 'selectCommit', hash: node.hash }); });
 		row.addEventListener('contextmenu', (event) => { event.preventDefault(); selectedHash = node.hash; renderRows(); showCommitMenu(event.clientX, event.clientY, node.hash); });
 		rowsEl.appendChild(row);
 	}
@@ -253,6 +301,8 @@ interface FileTreeNode {
 	readonly files: GraphCommitDetailsDto['files'][number][];
 }
 
+const fileNameCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
+
 function buildFileTree(files: GraphCommitDetailsDto['files']): FileTreeNode {
 	const root: FileTreeNode = { folders: new Map(), files: [] };
 	for (const file of files) {
@@ -271,9 +321,8 @@ function buildFileTree(files: GraphCommitDetailsDto['files']): FileTreeNode {
 	return root;
 }
 
-function renderFileTree(parent: HTMLElement, node: FileTreeNode, details: GraphCommitDetailsDto, depth = 0): void {
-	const byName = (left: string, right: string): number => left.localeCompare(right, undefined, { sensitivity: 'base' });
-	for (const [name, child] of [...node.folders].sort(([left], [right]) => byName(left, right))) {
+function renderFileTree(parent: HTMLElement | DocumentFragment, node: FileTreeNode, details: GraphCommitDetailsDto, depth = 0): void {
+	for (const [name, child] of [...node.folders].sort(([left], [right]) => fileNameCollator.compare(left, right))) {
 		const folder = document.createElement('div');
 		folder.className = 'file-folder';
 		folder.style.paddingLeft = `${8 + depth * 14}px`;
@@ -292,7 +341,7 @@ function renderFileTree(parent: HTMLElement, node: FileTreeNode, details: GraphC
 		});
 		parent.append(folder, children);
 	}
-	for (const file of [...node.files].sort((left, right) => byName(left.path, right.path))) {
+	for (const file of [...node.files].sort((left, right) => fileNameCollator.compare(left.path, right.path))) {
 		const name = file.path.replace(/\\/g, '/').split('/').at(-1) ?? file.path;
 		const row = document.createElement('div'); row.className = 'file-row'; row.title = file.path;
 		row.style.paddingLeft = `${8 + depth * 14}px`;
@@ -308,22 +357,49 @@ function renderFileTree(parent: HTMLElement, node: FileTreeNode, details: GraphC
 
 function renderDetails(details: GraphCommitDetailsDto): void {
 	detailsEl.innerHTML = '';
-	const header = document.createElement('div'); header.className = 'detail-header';
-	const subject = document.createElement('div'); subject.className = 'detail-subject'; subject.textContent = details.message;
-	const meta = document.createElement('div'); meta.className = 'detail-meta';
-	meta.innerHTML = `<code>${details.hash.slice(0, 8)}</code> · ${formatDate(details.date, true)}<br>`;
-	const author = document.createElement('span'); author.textContent = `${details.authorName}${details.authorEmail ? ` <${details.authorEmail}>` : ''}`; meta.appendChild(author);
-	header.append(subject, meta);
-	if (details.refs.length) {
-		const refs = document.createElement('div'); refs.className = 'refs';
-		for (const ref of details.refs) { const badge = document.createElement('span'); badge.className = 'ref-badge'; badge.textContent = ref; refs.appendChild(badge); }
-		header.appendChild(refs);
-	}
+	const header = createDetailHeader(details);
 	const fileHead = document.createElement('div'); fileHead.className = 'file-head';
-	const count = document.createElement('span'); count.textContent = `${details.files.length} ${text(details.files.length === 1 ? 'changed file' : 'changed files', '개의 변경된 파일')}`;
-	fileHead.append(count);
+	const count = document.createElement('span'); count.className = 'file-count';
+	const search = document.createElement('input'); search.className = 'file-search'; search.type = 'search';
+	search.placeholder = text('Search files (e.g. *.ts)', '파일 검색 (예: *.c)');
+	search.setAttribute('aria-label', text('Search changed files', '변경된 파일 검색'));
 	const list = document.createElement('div'); list.className = 'file-list';
-	renderFileTree(list, buildFileTree(details.files), details);
+	const searchableFiles = details.files.map((file) => {
+		const searchPath = file.path.replace(/\\/g, '/').toLocaleLowerCase();
+		return { file, searchPath, fileName: searchPath.split('/').at(-1) ?? searchPath };
+	});
+	let lastQuery: string | undefined;
+	const renderFiles = (): void => {
+		const query = search.value.trim().toLocaleLowerCase();
+		if (query === lastQuery) return;
+		lastQuery = query;
+		const pattern = query && /[*?]/.test(query) ? globPattern(query) : undefined;
+		const filtered = query
+			? searchableFiles
+				.filter(({ searchPath, fileName }) => pattern ? pattern.test(searchPath) || pattern.test(fileName) : searchPath.includes(query))
+				.map(({ file }) => file)
+			: details.files;
+		count.textContent = query
+			? `${filtered.length} / ${details.files.length} ${text('files', '개 파일')}`
+			: `${details.files.length} ${text(details.files.length === 1 ? 'changed file' : 'changed files', '개의 변경된 파일')}`;
+		list.innerHTML = '';
+		if (filtered.length === 0) {
+			const empty = document.createElement('div'); empty.className = 'file-list-empty';
+			empty.textContent = text('No matching files', '일치하는 파일이 없습니다');
+			list.appendChild(empty);
+			return;
+		}
+		const fragment = document.createDocumentFragment();
+		renderFileTree(fragment, buildFileTree(filtered), details);
+		list.appendChild(fragment);
+	};
+	let searchTimer: number | undefined;
+	search.addEventListener('input', () => {
+		window.clearTimeout(searchTimer);
+		searchTimer = window.setTimeout(renderFiles, 120);
+	});
+	fileHead.append(count, search);
+	renderFiles();
 	const files = document.createElement('div'); files.className = 'files'; files.append(fileHead, list);
 	files.style.flexBasis = `${detailsSplit * 100}%`;
 	const resizer = document.createElement('div');
@@ -354,6 +430,10 @@ function renderDetails(details: GraphCommitDetailsDto): void {
 }
 
 function showError(message: string): void {
+	if (detailsEl.querySelector('.details-loading')) {
+		detailsEl.innerHTML = '';
+		const error = document.createElement('div'); error.className = 'empty'; error.textContent = message; detailsEl.appendChild(error);
+	}
 	const banner = document.createElement('div'); banner.className = 'error-banner'; banner.textContent = message; root.prepend(banner); setTimeout(() => banner.remove(), 5000);
 }
 
@@ -365,7 +445,13 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToGraphMessage>
 		commits = message.commits;
 		if (!selectedHash || !commits.some((commit) => commit.hash === selectedHash)) selectedHash = commits[0]?.hash;
 		renderRows();
-		if (selectedHash) post({ type: 'selectCommit', hash: selectedHash });
+		if (selectedHash) {
+			const selected = commits.find((commit) => commit.hash === selectedHash);
+			if (selected) showDetailsLoading(metadataFromCommit(selected));
+			post({ type: 'selectCommit', hash: selectedHash });
+		}
+	} else if (message.type === 'commitMetadata' && message.metadata.hash === selectedHash) {
+		showDetailsLoading(message.metadata);
 	} else if (message.type === 'commitDetails' && message.details.hash === selectedHash) {
 		renderDetails(message.details);
 	} else if (message.type === 'refs') {
