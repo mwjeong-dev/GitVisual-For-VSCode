@@ -87,10 +87,16 @@ style.textContent = `
 	body.resizing-details { cursor: row-resize; user-select: none; }
 	.file-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-weight: 600; background: var(--vscode-sideBarSectionHeader-background); }
 	.file-list { padding: 4px 0 12px; }
-	.file-row { display: grid; grid-template-columns: 20px 1fr 24px; gap: 5px; align-items: center; padding: 5px 14px; cursor: pointer; }
-	.file-row:hover { background: var(--vscode-list-hoverBackground); }
+	.file-row, .file-folder { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 2px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+	.file-row:hover, .file-folder:hover { background: var(--vscode-list-hoverBackground); }
+	.file-folder { color: var(--vscode-descriptionForeground); user-select: none; }
+	.file-tree-chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: .9; }
+	.file-tree-chevron svg { display: block; width: 16px; height: 16px; }
+	.file-folder.collapsed .file-tree-chevron svg { transform: rotate(-90deg); }
+	.file-tree-icon { display: grid; place-items: center; flex: 0 0 16px; width: 16px; height: 16px; opacity: .85; }
+	.folder-children.collapsed { display: none; }
 	.file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.file-status { font-weight: 700; color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+	.file-status { flex: 0 0 auto; margin-left: auto; font-weight: 700; color: var(--vscode-gitDecoration-modifiedResourceForeground); }
 	.error-banner { position: absolute; z-index: 5; left: 8px; right: 8px; padding: 6px 10px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); }
 	.context-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; width: min(350px, calc(100vw - 12px)); padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 7px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, #252526); box-shadow: 0 5px 18px #0009; }
 	.context-title { padding: 3px 9px 2px; color: var(--vscode-descriptionForeground); font-size: 10px; font-weight: 600; text-transform: uppercase; }
@@ -242,6 +248,64 @@ document.addEventListener('keydown', (event) => { if (event.key === 'Escape') cl
 window.addEventListener('scroll', closeCommitMenu, true);
 window.addEventListener('blur', closeCommitMenu);
 
+interface FileTreeNode {
+	readonly folders: Map<string, FileTreeNode>;
+	readonly files: GraphCommitDetailsDto['files'][number][];
+}
+
+function buildFileTree(files: GraphCommitDetailsDto['files']): FileTreeNode {
+	const root: FileTreeNode = { folders: new Map(), files: [] };
+	for (const file of files) {
+		const parts = file.path.replace(/\\/g, '/').split('/').filter(Boolean);
+		let node = root;
+		for (const folder of parts.slice(0, -1)) {
+			let child = node.folders.get(folder);
+			if (!child) {
+				child = { folders: new Map(), files: [] };
+				node.folders.set(folder, child);
+			}
+			node = child;
+		}
+		node.files.push(file);
+	}
+	return root;
+}
+
+function renderFileTree(parent: HTMLElement, node: FileTreeNode, details: GraphCommitDetailsDto, depth = 0): void {
+	const byName = (left: string, right: string): number => left.localeCompare(right, undefined, { sensitivity: 'base' });
+	for (const [name, child] of [...node.folders].sort(([left], [right]) => byName(left, right))) {
+		const folder = document.createElement('div');
+		folder.className = 'file-folder';
+		folder.style.paddingLeft = `${8 + depth * 14}px`;
+		folder.title = name;
+		const chevron = document.createElement('span'); chevron.className = 'file-tree-chevron';
+		chevron.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.97 5.72a.75.75 0 0 1 1.06 0L8 8.69l2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg>';
+		const icon = document.createElement('span'); icon.className = 'file-tree-icon'; icon.textContent = '📂';
+		const label = document.createElement('span'); label.className = 'file-path'; label.textContent = name;
+		folder.append(chevron, icon, label);
+		const children = document.createElement('div'); children.className = 'folder-children';
+		renderFileTree(children, child, details, depth + 1);
+		folder.addEventListener('click', () => {
+			const collapsed = folder.classList.toggle('collapsed');
+			children.classList.toggle('collapsed', collapsed);
+			icon.textContent = collapsed ? '📁' : '📂';
+		});
+		parent.append(folder, children);
+	}
+	for (const file of [...node.files].sort((left, right) => byName(left.path, right.path))) {
+		const name = file.path.replace(/\\/g, '/').split('/').at(-1) ?? file.path;
+		const row = document.createElement('div'); row.className = 'file-row'; row.title = file.path;
+		row.style.paddingLeft = `${8 + depth * 14}px`;
+		const chevronSpace = document.createElement('span'); chevronSpace.className = 'file-tree-chevron';
+		const iconSpace = document.createElement('span'); iconSpace.className = 'file-tree-icon';
+		const path = document.createElement('span'); path.className = 'file-path'; path.textContent = name;
+		const status = document.createElement('span'); status.className = 'file-status'; status.textContent = file.status.slice(0, 1);
+		row.append(chevronSpace, iconSpace, path, status);
+		row.addEventListener('click', () => post({ type: 'openFile', hash: details.hash, uri: file.uri }));
+		parent.appendChild(row);
+	}
+}
+
 function renderDetails(details: GraphCommitDetailsDto): void {
 	detailsEl.innerHTML = '';
 	const header = document.createElement('div'); header.className = 'detail-header';
@@ -259,15 +323,7 @@ function renderDetails(details: GraphCommitDetailsDto): void {
 	const count = document.createElement('span'); count.textContent = `${details.files.length} ${text(details.files.length === 1 ? 'changed file' : 'changed files', '개의 변경된 파일')}`;
 	fileHead.append(count);
 	const list = document.createElement('div'); list.className = 'file-list';
-	for (const file of details.files) {
-		const row = document.createElement('div'); row.className = 'file-row'; row.title = file.path;
-		const icon = document.createElement('span'); icon.textContent = '◇';
-		const path = document.createElement('span'); path.className = 'file-path'; path.textContent = file.path;
-		const status = document.createElement('span'); status.className = 'file-status'; status.textContent = file.status.slice(0, 1);
-		row.append(icon, path, status);
-		row.addEventListener('click', () => post({ type: 'openFile', hash: details.hash, uri: file.uri }));
-		list.appendChild(row);
-	}
+	renderFileTree(list, buildFileTree(details.files), details);
 	const files = document.createElement('div'); files.className = 'files'; files.append(fileHead, list);
 	files.style.flexBasis = `${detailsSplit * 100}%`;
 	const resizer = document.createElement('div');
