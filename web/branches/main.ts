@@ -141,7 +141,7 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 	const hasChildren = node.children.size > 0;
 
 	const row = document.createElement('div');
-	row.className = 'row' + (node.isCurrent ? ' current' : '') + (node.fullName === selectedName ? ' selected' : '');
+	row.className = 'row' + (node.isCurrent ? ' current' : '') + (isLeaf && node.fullName === selectedName ? ' selected' : '');
 	row.style.paddingLeft = `${8 + depth * 14}px`;
 
 	const chevron = document.createElement('span');
