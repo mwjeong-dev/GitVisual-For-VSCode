@@ -54,13 +54,13 @@
     "views": {
       "gitToolsActivityBar": [
         {
-          "id": "gitTools.branchesView",
-          "name": "%view.branches%",
+          "id": "gitTools.commitPanel",
+          "name": "%view.commit%",
           "type": "webview"
         },
         {
-          "id": "gitTools.commitPanel",
-          "name": "%view.commit%",
+          "id": "gitTools.branchesView",
+          "name": "%view.branches%",
           "type": "webview"
         }
       ],
