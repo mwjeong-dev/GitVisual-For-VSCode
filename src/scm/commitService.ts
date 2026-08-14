@@ -7,6 +7,30 @@ import type { Repository } from '../gitApi/git.d';
 import { spawnGit } from '../gitApi/spawnGit';
 import { relPathFromRepoRoot } from '../gitApi/repoContext';
 
+const ZERO_SHA = '0000000000000000000000000000000000000000';
+const MAX_PATH_ARGUMENT_CHARS = 8_000;
+
+/** Keep spawned Git command lines below Windows' comparatively small argv limit. */
+function pathBatches(paths: readonly string[]): string[][] {
+	const batches: string[][] = [];
+	let batch: string[] = [];
+	let chars = 0;
+	for (const filePath of paths) {
+		const argumentChars = filePath.length + 1;
+		if (batch.length > 0 && chars + argumentChars > MAX_PATH_ARGUMENT_CHARS) {
+			batches.push(batch);
+			batch = [];
+			chars = 0;
+		}
+		batch.push(filePath);
+		chars += argumentChars;
+	}
+	if (batch.length > 0) {
+		batches.push(batch);
+	}
+	return batches;
+}
+
 /**
  * Copies one path's current real-index entry (blob + mode) into a scratch
  * index, or removes it there if the path isn't in the real index at all
@@ -49,19 +73,25 @@ export async function commitFilesIsolated(
 	const scratchIndexPath = path.join(os.tmpdir(), `gittools-index-${randomUUID()}`);
 
 	try {
-		const headSha = (await spawnGit(repoRoot, ['rev-parse', 'HEAD'])).stdout.trim();
+		const headSha = await spawnGit(repoRoot, ['rev-parse', '--verify', 'HEAD'])
+			.then((result) => result.stdout.trim(), () => '');
+		if (amend && headSha.length === 0) {
+			throw new Error('Cannot amend because this repository has no commits yet.');
+		}
 		const parentSha = amend
 			? (await spawnGit(repoRoot, ['rev-parse', 'HEAD~1']).catch(() => ({ stdout: '' }))).stdout.trim()
 			: headSha;
 
-		await spawnGit(repoRoot, ['read-tree', 'HEAD'], { env: { GIT_INDEX_FILE: scratchIndexPath } });
+		await spawnGit(repoRoot, headSha ? ['read-tree', 'HEAD'] : ['read-tree', '--empty'], {
+			env: { GIT_INDEX_FILE: scratchIndexPath },
+		});
 
 		const relPaths = uriStrings.map((uriString) => relPathFromRepoRoot(repo, vscode.Uri.parse(uriString)));
 		const workingTreePaths = uriStrings
 			.filter((uri) => !realIndexUriStrings.has(uri))
 			.map((uri) => relPathFromRepoRoot(repo, vscode.Uri.parse(uri)));
-		if (workingTreePaths.length > 0) {
-			await spawnGit(repoRoot, ['add', '--all', '--', ...workingTreePaths], {
+		for (const paths of pathBatches(workingTreePaths)) {
+			await spawnGit(repoRoot, ['add', '--all', '--', ...paths], {
 				env: { GIT_INDEX_FILE: scratchIndexPath },
 			});
 		}
@@ -81,10 +111,12 @@ export async function commitFilesIsolated(
 		}
 		const newCommitSha = (await spawnGit(repoRoot, commitArgs)).stdout.trim();
 
-		await spawnGit(repoRoot, ['update-ref', 'HEAD', newCommitSha, headSha]);
+		await spawnGit(repoRoot, ['update-ref', 'HEAD', newCommitSha, headSha || ZERO_SHA]);
 		// Align only the committed paths in the real index with the new HEAD.
 		// Other externally staged paths remain untouched.
-		await spawnGit(repoRoot, ['reset', '-q', 'HEAD', '--', ...relPaths]);
+		for (const paths of pathBatches(relPaths)) {
+			await spawnGit(repoRoot, ['reset', '-q', 'HEAD', '--', ...paths]);
+		}
 	} finally {
 		await fs.unlink(scratchIndexPath).catch(() => undefined);
 	}

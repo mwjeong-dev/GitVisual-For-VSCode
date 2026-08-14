@@ -58,7 +58,8 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 	private async sendBranches(): Promise<void> {
 		const repo = this.repo;
 		if (!repo) {
-			this.post({ type: 'branches', branches: [] });
+			this.post({ type: 'busy', busy: false });
+			this.post({ type: 'branches', branches: [], emptyState: 'noRepository' });
 			return;
 		}
 		this.post({ type: 'busy', busy: true });
@@ -88,7 +89,11 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 			branches.push({ kind, name: ref.name, isCurrent: kind === 'local' && ref.name === currentBranchName, ...counts });
 		}
 		branches.sort((a, b) => a.name.localeCompare(b.name));
-		this.post({ type: 'branches', branches });
+		this.post({
+			type: 'branches',
+			branches,
+			emptyState: branches.length === 0 && !repo.state.HEAD?.commit ? 'noCommits' : undefined,
+		});
 		this.post({ type: 'busy', busy: false });
 	}
 

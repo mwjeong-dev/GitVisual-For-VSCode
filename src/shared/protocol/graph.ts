@@ -28,7 +28,7 @@ export interface GraphCommitDetailsDto {
 export type GraphCommitMetadataDto = Omit<GraphCommitDetailsDto, 'files'>;
 
 export type ExtensionToGraphMessage =
-	| { readonly type: 'commits'; readonly commits: GraphCommitDto[]; readonly ref?: string }
+	| { readonly type: 'commits'; readonly commits: GraphCommitDto[]; readonly ref?: string; readonly emptyState?: 'noRepository' | 'noCommits' }
 	| { readonly type: 'refs'; readonly refs: string[] }
 	| { readonly type: 'selectCommitAfterRewrite'; readonly hash: string }
 	| { readonly type: 'commitMetadata'; readonly metadata: GraphCommitMetadataDto }

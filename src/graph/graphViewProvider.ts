@@ -58,7 +58,9 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		this.detailsCache.clear();
 		const repo = this.repo;
 		if (!repo) {
-			this.post({ type: 'commits', commits: [] });
+			this.commits = [];
+			this.post({ type: 'refs', refs: [] });
+			this.post({ type: 'commits', commits: [], emptyState: 'noRepository' });
 			return;
 		}
 		const maxCommits = vscode.workspace.getConfiguration('gitTools').get<number>('graph.maxCommits', 300);
@@ -71,7 +73,12 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 			const remoteRefs = await repo.getBranches({ remote: true });
 			const uniqueRefs = [...new Set([...refs, ...remoteRefs].flatMap((ref) => ref.name ? [ref.name] : []))].sort();
 			this.post({ type: 'refs', refs: uniqueRefs });
-			this.post({ type: 'commits', commits, ref: requestedRef });
+			this.post({
+				type: 'commits',
+				commits,
+				ref: requestedRef,
+				emptyState: commits.length === 0 && !requestedRef ? 'noCommits' : undefined,
+			});
 		} catch (error) {
 			this.post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
 		}

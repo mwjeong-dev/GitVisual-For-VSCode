@@ -7,7 +7,7 @@ export interface BranchTreeItemDto {
 }
 
 export type ExtensionToBranchesMessage =
-	| { readonly type: 'branches'; readonly branches: BranchTreeItemDto[] }
+	| { readonly type: 'branches'; readonly branches: BranchTreeItemDto[]; readonly emptyState?: 'noRepository' | 'noCommits' }
 	| { readonly type: 'busy'; readonly busy: boolean }
 	| { readonly type: 'error'; readonly message: string };
 

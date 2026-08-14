@@ -470,6 +470,17 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToGraphMessage>
 		commits = message.commits;
 		if (!selectedHash || !commits.some((commit) => commit.hash === selectedHash)) selectedHash = commits[0]?.hash;
 		renderRows();
+		if (commits.length === 0) {
+			detailsEl.innerHTML = '';
+			const empty = document.createElement('div');
+			empty.className = 'empty';
+			empty.textContent = message.emptyState === 'noRepository'
+				? text('Open a folder containing a Git repository.', 'Git 저장소가 있는 폴더를 여세요.')
+				: message.emptyState === 'noCommits'
+					? text('No commits yet. Create the first commit to start the graph.', '아직 커밋이 없습니다. 첫 커밋을 만들면 그래프가 표시됩니다.')
+					: text('No commits match the current filter.', '현재 필터와 일치하는 커밋이 없습니다.');
+			detailsEl.appendChild(empty);
+		}
 		if (selectedHash) {
 			const selected = commits.find((commit) => commit.hash === selectedHash);
 			if (selected) showDetailsLoading(metadataFromCommit(selected));
