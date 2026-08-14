@@ -28,7 +28,7 @@ root.innerHTML = `
 		<div class="left-pane">
 			<div class="toolbar">
 				<div class="search-wrap"><span>⌕</span><input id="search" placeholder="${text('Search commits, authors, refs, or hashes', '커밋, 작성자, 브랜치 또는 해시 검색')}"></div>
-				<div class="branch-filter" id="branch-filter"><button id="branch-button">${text('Branch', '브랜치')}⌄</button><button id="clear-branch" title="${text('Clear branch filter', '브랜치 필터 해제')}">×</button><div class="branch-menu" id="branch-menu"></div></div>
+				<div class="branch-filter" id="branch-filter"><button id="branch-button"></button><button id="clear-branch" title="${text('Clear branch filter', '브랜치 필터 해제')}">×</button><div class="branch-menu" id="branch-menu"></div></div>
 				<button id="refresh" title="Refresh">↻</button>
 			</div>
 			<div class="column-head"><span>${text('Commit', '커밋')}</span><span>${text('Author', '작성자')}</span><span>${text('Date', '날짜')}</span></div>
@@ -51,13 +51,22 @@ style.textContent = `
 	.toolbar button { margin-left: auto; border: 0; padding: 3px 8px; font-size: 17px; cursor: pointer; color: var(--vscode-foreground); background: transparent; }
 	.branch-filter { position: relative; }
 	.toolbar .branch-filter button { margin: 0; font-size: 13px; white-space: nowrap; }
+	.toolbar .branch-filter #branch-button { display: inline-flex; align-items: center; gap: 3px; }
+	.branch-button-chevron { display: inline-flex; flex: 0 0 12px; width: 12px; height: 12px; align-items: center; justify-content: center; transition: transform 100ms ease; }
+	.branch-button-chevron svg { display: block; width: 12px; height: 12px; }
+	.branch-filter:has(.branch-menu.open) .branch-button-chevron { transform: rotate(180deg); }
 	.toolbar .branch-filter #clear-branch { display: none; margin-left: -5px; padding-left: 3px; }
 	.toolbar .branch-filter.active #clear-branch { display: inline-block; }
 	.branch-filter.active button { color: var(--vscode-textLink-foreground); background: var(--vscode-list-hoverBackground); border-radius: 3px; }
-	.branch-menu { display: none; position: absolute; z-index: 20; top: 30px; left: 0; min-width: 240px; max-height: 330px; overflow: auto; padding: 4px 0; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-editor-background)); box-shadow: 0 4px 12px #0008; }
+	.branch-menu { display: none; position: absolute; z-index: 20; top: 30px; left: 0; min-width: 240px; max-height: 330px; overflow: auto; padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 6px; background: var(--vscode-menu-background, var(--vscode-editor-background)); box-shadow: 0 5px 16px #0008; }
 	.branch-menu.open { display: block; }
-	.branch-option { padding: 6px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.branch-option { display: grid; grid-template-columns: 17px minmax(0, 1fr) 15px; align-items: center; gap: 7px; min-height: 29px; padding: 4px 7px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
 	.branch-option:hover { background: var(--vscode-list-hoverBackground); }
+	.branch-option.selected { background: var(--vscode-list-inactiveSelectionBackground); }
+	.branch-option-icon { display: grid; place-items: center; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: .85; }
+	.branch-option-icon svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
+	.branch-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	.branch-option-check { color: var(--vscode-textLink-foreground); text-align: center; }
 	.toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
 	.column-head { display: grid; grid-template-columns: minmax(240px, 1fr) 145px 130px; padding: 4px 12px 4px 54px; opacity: .65; font-size: 11px; border-bottom: 1px solid var(--vscode-panel-border); }
 	.graph-container { position: relative; flex: 1 1 0; width: 100%; min-height: 0; overflow-x: auto; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable; }
@@ -155,11 +164,23 @@ window.addEventListener('click', () => branchMenuEl.classList.remove('open'));
 
 function renderBranchFilter(): void {
 	branchFilterEl.classList.toggle('active', Boolean(selectedRef));
-	branchButtonEl.textContent = selectedRef ? `${text('Branch', '브랜치')}: ${selectedRef}` : `${text('Branch', '브랜치')}⌄`;
+	branchButtonEl.innerHTML = '';
+	const buttonLabel = document.createElement('span');
+	buttonLabel.textContent = selectedRef ? `${text('Branch', '브랜치')}: ${selectedRef}` : text('Branch', '브랜치');
+	const buttonChevron = document.createElement('span'); buttonChevron.className = 'branch-button-chevron';
+	buttonChevron.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3.97 5.72a.75.75 0 0 1 1.06 0L8 8.69l2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 0-1.06Z"/></svg>';
+	branchButtonEl.append(buttonLabel, buttonChevron);
 	branchButtonEl.title = selectedRef ? text(`Filtering by ${selectedRef}. Choose All branches to clear.`, `${selectedRef} 브랜치로 필터링 중입니다. 전체 브랜치를 선택하면 해제됩니다.`) : text('Filter by branch', '브랜치로 필터링');
 	branchMenuEl.innerHTML = '';
 	const add = (label: string, ref?: string): void => {
-		const option = document.createElement('div'); option.className = 'branch-option'; option.textContent = label;
+		const option = document.createElement('div'); option.className = 'branch-option' + (selectedRef === ref ? ' selected' : '');
+		const icon = document.createElement('span'); icon.className = 'branch-option-icon';
+		icon.innerHTML = ref
+			? '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="3.5" r="1.75"/><circle cx="5" cy="12.5" r="1.75"/><circle cx="11.5" cy="5.5" r="1.75"/><path d="M5 5.25v5.5M11.5 7.25v.5A4.75 4.75 0 0 1 6.75 12.5"/></svg>'
+			: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.25h10M3 8h10M3 11.75h10"/></svg>';
+		const optionLabel = document.createElement('span'); optionLabel.className = 'branch-option-label'; optionLabel.textContent = label;
+		const check = document.createElement('span'); check.className = 'branch-option-check'; check.textContent = selectedRef === ref ? '✓' : '';
+		option.append(icon, optionLabel, check);
 		option.addEventListener('click', () => { selectedRef = ref; selectedHash = undefined; renderBranchFilter(); post({ type: 'filterBranch', ref }); });
 		branchMenuEl.appendChild(option);
 	};
