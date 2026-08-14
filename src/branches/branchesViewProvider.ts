@@ -15,6 +15,8 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 
 	private view: vscode.WebviewView | undefined;
 	private readonly text = createTranslator(vscode.env.language);
+	private autoFetchInProgress = false;
+	private lastAutoFetchAt = 0;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -35,6 +37,9 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		};
 		webviewView.webview.html = this.getHtml(webviewView.webview);
 		webviewView.webview.onDidReceiveMessage((message: BranchesToExtensionMessage) => this.handleMessage(message));
+		webviewView.onDidChangeVisibility(() => {
+			if (webviewView.visible) void this.autoFetchRemoteState();
+		});
 	}
 
 	async refresh(): Promise<void> {
@@ -91,6 +96,9 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		try {
 			switch (message.type) {
 				case 'ready':
+					await this.sendBranches();
+					void this.autoFetchRemoteState();
+					break;
 				case 'refresh':
 					await this.sendBranches();
 					break;
@@ -139,6 +147,28 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		} catch (error) {
 			this.post({ type: 'busy', busy: false });
 			this.post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+		}
+	}
+
+	private async autoFetchRemoteState(): Promise<void> {
+		const repo = this.repo;
+		if (!repo || repo.state.remotes.length === 0 || this.autoFetchInProgress || Date.now() - this.lastAutoFetchAt < 60_000) return;
+		this.autoFetchInProgress = true;
+		this.lastAutoFetchAt = Date.now();
+		try {
+			this.post({ type: 'busy', busy: true });
+			await repo.fetch({ all: true, prune: true });
+			await repo.status();
+			await this.sendBranches();
+		} catch (error) {
+			// Keep locally known branch data usable when the network or remote is unavailable.
+			this.post({ type: 'error', message: this.text(
+				`Could not refresh remote branches: ${error instanceof Error ? error.message : String(error)}`,
+				`원격 브랜치를 갱신하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
+			) });
+		} finally {
+			this.autoFetchInProgress = false;
+			this.post({ type: 'busy', busy: false });
 		}
 	}
 

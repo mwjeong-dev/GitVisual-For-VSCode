@@ -300,6 +300,7 @@ function showCommitMenu(x: number, y: number, hash: string): void {
 	item('Revert Commit…', '커밋 되돌리기…', 'revert');
 	separator();
 	item('Edit Commit Message…', '커밋 메시지 편집…', 'editMessage');
+	item('Delete Commit…', '커밋 삭제…', 'deleteCommit');
 	item('Create Fixup Commit', '픽스업…', 'fixup');
 	item('Rebase Current Branch onto Here…', '현재 브랜치를 여기로 리베이스…', 'rebase');
 	separator();

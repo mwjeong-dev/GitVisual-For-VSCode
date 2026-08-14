@@ -128,14 +128,8 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 				if (yes) await spawnGit(root, ['revert', hash]);
 				break;
 			}
-			case 'editMessage': {
-				const head = (await spawnGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
-				if (head !== hash) throw new Error(this.text('Only the HEAD commit message can be edited safely.', 'HEAD 커밋 메시지만 안전하게 수정할 수 있습니다.'));
-				const old = (await repo.getCommit(hash)).message;
-				const message = await vscode.window.showInputBox({ title: this.text('Edit Commit Message', '커밋 메시지 편집'), value: old, ignoreFocusOut: true });
-				if (message?.trim()) await repo.commit(message.trim(), { amend: true });
-				break;
-			}
+			case 'deleteCommit': await this.deleteCommit(hash); break;
+			case 'editMessage': await this.editCommitMessage(hash); break;
 			case 'fixup': await spawnGit(root, ['commit', '--fixup', hash]); break;
 			case 'rebase': {
 				const yes = await vscode.window.showWarningMessage(this.text(`Rebase the current branch onto ${hash.slice(0, 8)}?`, `현재 브랜치를 ${hash.slice(0, 8)} 위로 리베이스할까요?`), { modal: true }, this.text('Rebase', '리베이스'));
@@ -169,6 +163,77 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 			if (!confirmed) return;
 		}
 		await spawnGit(this.repo!.rootUri.fsPath, ['reset', mode.value, hash]);
+	}
+
+	private async validateHistoryRewrite(hash: string): Promise<{ root: string; branch: string; head: string; parent: string }> {
+		const repo = this.repo;
+		if (!repo) throw new Error(this.text('No Git repository is available.', '사용 가능한 Git 저장소가 없습니다.'));
+		const root = repo.rootUri.fsPath;
+		const status = (await spawnGit(root, ['status', '--porcelain'])).stdout.trim();
+		if (status) throw new Error(this.text('Commit history can only be rewritten with a clean working tree.', '작업 트리가 깨끗할 때만 커밋 기록을 변경할 수 있습니다.'));
+		let branch: string;
+		try {
+			branch = (await spawnGit(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).stdout.trim();
+		} catch {
+			throw new Error(this.text('Commit history cannot be rewritten while HEAD is detached.', 'HEAD가 분리된 상태에서는 커밋 기록을 변경할 수 없습니다.'));
+		}
+		const head = (await spawnGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
+		const firstParentCommits = new Set((await spawnGit(root, ['rev-list', '--first-parent', 'HEAD'])).stdout.trim().split(/\r?\n/));
+		if (!firstParentCommits.has(hash)) {
+			throw new Error(this.text('Select a commit on the current branch first-parent history.', '현재 브랜치의 first-parent 기록에 있는 커밋을 선택하세요.'));
+		}
+		const revision = (await spawnGit(root, ['rev-list', '--parents', '-n', '1', hash])).stdout.trim().split(/\s+/);
+		if (revision.length !== 2) {
+			throw new Error(this.text('Root and merge commits cannot be rewritten by this action.', '루트 커밋과 병합 커밋은 이 기능으로 변경할 수 없습니다.'));
+		}
+		return { root, branch, head, parent: revision[1] };
+	}
+
+	private async deleteCommit(hash: string): Promise<void> {
+		const context = await this.validateHistoryRewrite(hash);
+		const confirmed = await vscode.window.showWarningMessage(
+			this.text(
+				`Delete commit ${hash.slice(0, 8)} from ${context.branch}? This rewrites later commits and may require a force push.`,
+				`${context.branch}에서 커밋 ${hash.slice(0, 8)}을(를) 삭제할까요? 이후 커밋 기록이 변경되며 강제 푸시가 필요할 수 있습니다.`,
+			),
+			{ modal: true },
+			this.text('Delete Commit', '커밋 삭제'),
+		);
+		if (!confirmed) return;
+		if (context.head === hash) {
+			await spawnGit(context.root, ['reset', '--hard', context.parent]);
+		} else {
+			await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', context.parent, hash, context.branch]);
+		}
+	}
+
+	private async editCommitMessage(hash: string): Promise<void> {
+		const context = await this.validateHistoryRewrite(hash);
+		const commit = await this.repo!.getCommit(hash);
+		const message = await vscode.window.showInputBox({
+			title: this.text('Edit Commit Message', '커밋 메시지 편집'),
+			prompt: this.text('Editing an older commit rewrites all later commits and may require a force push.', '이전 커밋을 수정하면 이후 기록이 변경되며 강제 푸시가 필요할 수 있습니다.'),
+			value: commit.message,
+			ignoreFocusOut: true,
+		});
+		if (!message?.trim() || message.trim() === commit.message.trim()) return;
+		const confirmed = await vscode.window.showWarningMessage(
+			this.text(`Rewrite commit ${hash.slice(0, 8)} and later history?`, `커밋 ${hash.slice(0, 8)}과(와) 이후 기록을 변경할까요?`),
+			{ modal: true },
+			this.text('Edit Commit Message', '커밋 메시지 편집'),
+		);
+		if (!confirmed) return;
+		if (context.head === hash) {
+			await this.repo!.commit(message.trim(), { amend: true });
+			return;
+		}
+		const metadata = (await spawnGit(context.root, ['show', '-s', '--format=%T%x00%an%x00%ae%x00%aI', hash])).stdout.trimEnd().split('\0');
+		const [tree, authorName, authorEmail, authorDate] = metadata;
+		const replacement = (await spawnGit(context.root, ['commit-tree', tree, '-p', context.parent], {
+			input: `${message.trim()}\n`,
+			env: { GIT_AUTHOR_NAME: authorName, GIT_AUTHOR_EMAIL: authorEmail, GIT_AUTHOR_DATE: authorDate },
+		})).stdout.trim();
+		await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', replacement, hash, context.branch]);
 	}
 
 	private async openComparison(leftRef: string, rightRef: string): Promise<void> {
