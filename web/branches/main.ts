@@ -13,6 +13,7 @@ function post(message: BranchesToExtensionMessage): void {
 }
 
 let branches: BranchTreeItemDto[] = [];
+let emptyState: 'noRepository' | 'noCommits' | undefined;
 let selectedName: string | undefined;
 let selectedKind: BranchTreeItemDto['kind'] | undefined;
 const collapsedFolders = new Set<string>();
@@ -54,6 +55,7 @@ style.textContent = `
 	.head-row { flex: 0 0 auto; padding: 8px 12px; margin-bottom: 5px; border-radius: 5px; background: var(--vscode-list-inactiveSelectionBackground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.loading { min-height: 18px; opacity: 0.7; font-size: 0.85em; }
 	.tree { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-bottom: 12px; }
+	.empty-state { padding: 12px 8px; color: var(--vscode-descriptionForeground); line-height: 1.45; }
 	.section-label { display: flex; align-items: center; gap: 5px; padding: 5px 5px 3px; font-weight: 600; font-size: 13px; cursor: pointer; }
 	.section-label:hover { background: var(--vscode-list-hoverBackground); }
 	.section-label .section-chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: 0.9; }
@@ -139,7 +141,7 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 	const hasChildren = node.children.size > 0;
 
 	const row = document.createElement('div');
-	row.className = 'row' + (node.isCurrent ? ' current' : '') + (node.fullName === selectedName ? ' selected' : '');
+	row.className = 'row' + (node.isCurrent ? ' current' : '') + (isLeaf && node.fullName === selectedName ? ' selected' : '');
 	row.style.paddingLeft = `${8 + depth * 14}px`;
 
 	const chevron = document.createElement('span');
@@ -275,6 +277,18 @@ const SECTIONS: { kind: BranchTreeItemDto['kind']; label: string }[] = [
 
 function render(): void {
 	treeEl.innerHTML = '';
+	if (branches.length === 0 && emptyState) {
+		headEl.textContent = emptyState === 'noRepository'
+			? text('No Git repository', 'Git 저장소 없음')
+			: text('No commits yet', '아직 커밋 없음');
+		const empty = document.createElement('div');
+		empty.className = 'empty-state';
+		empty.textContent = emptyState === 'noRepository'
+			? text('Open a folder containing a Git repository.', 'Git 저장소가 있는 폴더를 여세요.')
+			: text('Create the first commit to start using branches.', '첫 커밋을 만들면 브랜치를 사용할 수 있습니다.');
+		treeEl.appendChild(empty);
+		return;
+	}
 	const current = branches.find((branch) => branch.isCurrent);
 	headEl.textContent = current ? `★  HEAD (${text('current branch', '현재 브랜치')}): ${current.name}` : `HEAD (${text('detached or unavailable', '분리됨 또는 확인 불가')})`;
 	const query = searchEl.value.trim().toLocaleLowerCase();
@@ -319,6 +333,7 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToBranchesMessa
 	switch (message.type) {
 		case 'branches':
 			branches = message.branches;
+			emptyState = message.emptyState;
 			render();
 			break;
 		case 'busy':

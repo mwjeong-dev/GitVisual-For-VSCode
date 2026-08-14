@@ -1,10 +1,9 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { API } from '../gitApi/git.d';
-import type { ExtensionToGraphMessage, GraphToExtensionMessage } from '../shared/protocol/graph';
+import type { ExtensionToGraphMessage, GraphCommitDetailsDto, GraphToExtensionMessage } from '../shared/protocol/graph';
 import type { GraphCommitDto } from '../shared/protocol/graph';
 import { loadCommits } from './logReader';
-import { statusLabel } from '../gitApi/statusLabels';
 import { spawnGit } from '../gitApi/spawnGit';
 import { createTranslator } from '../shared/localization';
 
@@ -15,6 +14,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private view: vscode.WebviewView | undefined;
 	private commits: GraphCommitDto[] = [];
+	private readonly detailsCache = new Map<string, GraphCommitDetailsDto>();
 	private selectedRef: string | undefined;
 	private loadGeneration = 0;
 
@@ -55,9 +55,12 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private async loadAndSend(): Promise<void> {
 		const generation = ++this.loadGeneration;
+		this.detailsCache.clear();
 		const repo = this.repo;
 		if (!repo) {
-			this.post({ type: 'commits', commits: [] });
+			this.commits = [];
+			this.post({ type: 'refs', refs: [] });
+			this.post({ type: 'commits', commits: [], emptyState: 'noRepository' });
 			return;
 		}
 		const maxCommits = vscode.workspace.getConfiguration('gitTools').get<number>('graph.maxCommits', 300);
@@ -70,7 +73,12 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 			const remoteRefs = await repo.getBranches({ remote: true });
 			const uniqueRefs = [...new Set([...refs, ...remoteRefs].flatMap((ref) => ref.name ? [ref.name] : []))].sort();
 			this.post({ type: 'refs', refs: uniqueRefs });
-			this.post({ type: 'commits', commits, ref: requestedRef });
+			this.post({
+				type: 'commits',
+				commits,
+				ref: requestedRef,
+				emptyState: commits.length === 0 && !requestedRef ? 'noCommits' : undefined,
+			});
 		} catch (error) {
 			this.post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
 		}
@@ -127,12 +135,10 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 				if (yes) await spawnGit(root, ['revert', hash]);
 				break;
 			}
+			case 'deleteCommit': await this.deleteCommit(hash); break;
 			case 'editMessage': {
-				const head = (await spawnGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
-				if (head !== hash) throw new Error(this.text('Only the HEAD commit message can be edited safely.', 'HEAD 커밋 메시지만 안전하게 수정할 수 있습니다.'));
-				const old = (await repo.getCommit(hash)).message;
-				const message = await vscode.window.showInputBox({ title: this.text('Edit Commit Message', '커밋 메시지 편집'), value: old, ignoreFocusOut: true });
-				if (message?.trim()) await repo.commit(message.trim(), { amend: true });
+				const rewrittenHash = await this.editCommitMessage(hash);
+				if (rewrittenHash) this.post({ type: 'selectCommitAfterRewrite', hash: rewrittenHash });
 				break;
 			}
 			case 'fixup': await spawnGit(root, ['commit', '--fixup', hash]); break;
@@ -170,6 +176,78 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		await spawnGit(this.repo!.rootUri.fsPath, ['reset', mode.value, hash]);
 	}
 
+	private async validateHistoryRewrite(hash: string): Promise<{ root: string; branch: string; head: string; parent: string }> {
+		const repo = this.repo;
+		if (!repo) throw new Error(this.text('No Git repository is available.', '사용 가능한 Git 저장소가 없습니다.'));
+		const root = repo.rootUri.fsPath;
+		const status = (await spawnGit(root, ['status', '--porcelain'])).stdout.trim();
+		if (status) throw new Error(this.text('Commit history can only be rewritten with a clean working tree.', '작업 트리가 깨끗할 때만 커밋 기록을 변경할 수 있습니다.'));
+		let branch: string;
+		try {
+			branch = (await spawnGit(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).stdout.trim();
+		} catch {
+			throw new Error(this.text('Commit history cannot be rewritten while HEAD is detached.', 'HEAD가 분리된 상태에서는 커밋 기록을 변경할 수 없습니다.'));
+		}
+		const head = (await spawnGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
+		const firstParentCommits = new Set((await spawnGit(root, ['rev-list', '--first-parent', 'HEAD'])).stdout.trim().split(/\r?\n/));
+		if (!firstParentCommits.has(hash)) {
+			throw new Error(this.text('Select a commit on the current branch first-parent history.', '현재 브랜치의 first-parent 기록에 있는 커밋을 선택하세요.'));
+		}
+		const revision = (await spawnGit(root, ['rev-list', '--parents', '-n', '1', hash])).stdout.trim().split(/\s+/);
+		if (revision.length !== 2) {
+			throw new Error(this.text('Root and merge commits cannot be rewritten by this action.', '루트 커밋과 병합 커밋은 이 기능으로 변경할 수 없습니다.'));
+		}
+		return { root, branch, head, parent: revision[1] };
+	}
+
+	private async deleteCommit(hash: string): Promise<void> {
+		const context = await this.validateHistoryRewrite(hash);
+		const confirmed = await vscode.window.showWarningMessage(
+			this.text(
+				`Delete commit ${hash.slice(0, 8)} from ${context.branch}? This rewrites later commits and may require a force push.`,
+				`${context.branch}에서 커밋 ${hash.slice(0, 8)}을(를) 삭제할까요? 이후 커밋 기록이 변경되며 강제 푸시가 필요할 수 있습니다.`,
+			),
+			{ modal: true },
+			this.text('Delete Commit', '커밋 삭제'),
+		);
+		if (!confirmed) return;
+		if (context.head === hash) {
+			await spawnGit(context.root, ['reset', '--hard', context.parent]);
+		} else {
+			await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', context.parent, hash, context.branch]);
+		}
+	}
+
+	private async editCommitMessage(hash: string): Promise<string | undefined> {
+		const context = await this.validateHistoryRewrite(hash);
+		const commit = await this.repo!.getCommit(hash);
+		const message = await vscode.window.showInputBox({
+			title: this.text('Edit Commit Message', '커밋 메시지 편집'),
+			prompt: this.text('Editing an older commit rewrites all later commits and may require a force push.', '이전 커밋을 수정하면 이후 기록이 변경되며 강제 푸시가 필요할 수 있습니다.'),
+			value: commit.message,
+			ignoreFocusOut: true,
+		});
+		if (!message?.trim() || message.trim() === commit.message.trim()) return undefined;
+		const confirmed = await vscode.window.showWarningMessage(
+			this.text(`Rewrite commit ${hash.slice(0, 8)} and later history?`, `커밋 ${hash.slice(0, 8)}과(와) 이후 기록을 변경할까요?`),
+			{ modal: true },
+			this.text('Edit Commit Message', '커밋 메시지 편집'),
+		);
+		if (!confirmed) return undefined;
+		if (context.head === hash) {
+			await this.repo!.commit(message.trim(), { amend: true });
+			return (await spawnGit(context.root, ['rev-parse', 'HEAD'])).stdout.trim();
+		}
+		const metadata = (await spawnGit(context.root, ['show', '-s', '--format=%T%x00%an%x00%ae%x00%aI', hash])).stdout.trimEnd().split('\0');
+		const [tree, authorName, authorEmail, authorDate] = metadata;
+		const replacement = (await spawnGit(context.root, ['commit-tree', tree, '-p', context.parent], {
+			input: `${message.trim()}\n`,
+			env: { GIT_AUTHOR_NAME: authorName, GIT_AUTHOR_EMAIL: authorEmail, GIT_AUTHOR_DATE: authorDate },
+		})).stdout.trim();
+		await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', replacement, hash, context.branch]);
+		return replacement;
+	}
+
 	private async openComparison(leftRef: string, rightRef: string): Promise<void> {
 		const repo = this.repo;
 		if (!repo) return;
@@ -181,30 +259,54 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private readonly text = createTranslator(vscode.env.language);
 
+	private async loadChangedFiles(root: string, baseRef: string, hash: string): Promise<GraphCommitDetailsDto['files']> {
+		// Name/status output is enough for the tree. Avoiding the higher-level
+		// diff API also avoids expensive rename detection on large commits.
+		const { stdout } = await spawnGit(root, ['diff', '--name-status', '--no-renames', '-z', baseRef, hash, '--']);
+		const fields = stdout.split('\0');
+		const labels: Record<string, string> = {
+			A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type Changed', U: 'Unmerged', X: 'Changed', B: 'Changed',
+		};
+		const files: GraphCommitDetailsDto['files'][number][] = [];
+		for (let index = 0; index + 1 < fields.length; index += 2) {
+			const statusCode = fields[index].slice(0, 1);
+			const relativePath = fields[index + 1];
+			if (!relativePath) continue;
+			files.push({
+				uri: vscode.Uri.file(path.join(root, relativePath)).toString(),
+				path: relativePath.replace(/\\/g, '/'),
+				status: labels[statusCode] ?? 'Changed',
+			});
+		}
+		return files;
+	}
+
 	private async sendCommitDetails(hash: string): Promise<void> {
 		const repo = this.repo;
 		if (!repo) return;
-		const commit = await repo.getCommit(hash);
-		const baseRef = commit.parents[0] ?? EMPTY_TREE_SHA;
-		const changes = await repo.diffBetween(baseRef, hash);
+		const cached = this.detailsCache.get(hash);
+		if (cached) {
+			this.post({ type: 'commitDetails', details: cached });
+			return;
+		}
 		const graphCommit = this.commits.find((item) => item.hash === hash);
-		this.post({
-			type: 'commitDetails',
-			details: {
-				hash,
-				parents: commit.parents,
-				authorName: commit.authorName ?? graphCommit?.authorName ?? '',
-				authorEmail: commit.authorEmail ?? '',
-				date: commit.authorDate?.toISOString() ?? graphCommit?.date ?? '',
-				message: commit.message,
-				refs: graphCommit?.refs ?? [],
-				files: changes.map((change) => ({
-					uri: change.uri.toString(),
-					path: vscode.workspace.asRelativePath(change.uri, false),
-					status: statusLabel(change.status),
-				})),
-			},
-		});
+		const baseRef = graphCommit?.parents[0] ?? EMPTY_TREE_SHA;
+		const commitPromise = repo.getCommit(hash);
+		const filesPromise = this.loadChangedFiles(repo.rootUri.fsPath, baseRef, hash);
+		const commit = await commitPromise;
+		const metadata = {
+			hash,
+			parents: commit.parents,
+			authorName: commit.authorName ?? graphCommit?.authorName ?? '',
+			authorEmail: commit.authorEmail ?? '',
+			date: commit.authorDate?.toISOString() ?? graphCommit?.date ?? '',
+			message: commit.message,
+			refs: graphCommit?.refs ?? [],
+		};
+		this.post({ type: 'commitMetadata', metadata });
+		const details: GraphCommitDetailsDto = { ...metadata, files: await filesPromise };
+		this.detailsCache.set(hash, details);
+		this.post({ type: 'commitDetails', details });
 	}
 
 	private async openFile(hash: string, uri: vscode.Uri): Promise<void> {

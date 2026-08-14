@@ -87,6 +87,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			wireRepository(repo);
 			void reconcileAll();
 		}),
+		api.onDidCloseRepository(() => void reconcileAll()),
 	);
 	await reconcileAll();
 

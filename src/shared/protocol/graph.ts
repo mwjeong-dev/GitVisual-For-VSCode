@@ -25,9 +25,13 @@ export interface GraphCommitDetailsDto {
 	readonly files: GraphChangedFileDto[];
 }
 
+export type GraphCommitMetadataDto = Omit<GraphCommitDetailsDto, 'files'>;
+
 export type ExtensionToGraphMessage =
-	| { readonly type: 'commits'; readonly commits: GraphCommitDto[]; readonly ref?: string }
+	| { readonly type: 'commits'; readonly commits: GraphCommitDto[]; readonly ref?: string; readonly emptyState?: 'noRepository' | 'noCommits' }
 	| { readonly type: 'refs'; readonly refs: string[] }
+	| { readonly type: 'selectCommitAfterRewrite'; readonly hash: string }
+	| { readonly type: 'commitMetadata'; readonly metadata: GraphCommitMetadataDto }
 	| { readonly type: 'commitDetails'; readonly details: GraphCommitDetailsDto }
 	| { readonly type: 'error'; readonly message: string };
 
@@ -36,5 +40,5 @@ export type GraphToExtensionMessage =
 	| { readonly type: 'refresh' }
 	| { readonly type: 'filterBranch'; readonly ref?: string }
 	| { readonly type: 'selectCommit'; readonly hash: string }
-	| { readonly type: 'commitAction'; readonly hash: string; readonly action: 'copyHash' | 'createPatch' | 'cherryPick' | 'checkout' | 'compareHead' | 'reset' | 'revert' | 'editMessage' | 'fixup' | 'rebase' | 'newBranch' | 'newTag' }
+	| { readonly type: 'commitAction'; readonly hash: string; readonly action: 'copyHash' | 'createPatch' | 'cherryPick' | 'checkout' | 'compareHead' | 'reset' | 'revert' | 'deleteCommit' | 'editMessage' | 'fixup' | 'rebase' | 'newBranch' | 'newTag' }
 	| { readonly type: 'openFile'; readonly hash: string; readonly uri: string };

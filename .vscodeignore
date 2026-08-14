@@ -15,5 +15,6 @@ tsconfig.json
 web/tsconfig.json
 **/*.map
 **/.eslintrc*
+media/marketplace-icon-v*.png
 gitvisual-vscode-*.vsix
 git-studio-vscode-*.vsix
