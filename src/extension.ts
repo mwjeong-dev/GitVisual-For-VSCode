@@ -7,6 +7,7 @@ import { CommitPanelViewProvider } from './commitPanel/commitPanelViewProvider';
 import { GraphViewProvider } from './graph/graphViewProvider';
 import { BranchesViewProvider } from './branches/branchesViewProvider';
 import { EditorHistoryController } from './history/editorHistoryController';
+import { PushPreviewPanel } from './pushPreview/pushPreviewPanel';
 
 function allChangedUris(repo: Repository): string[] {
 	const { workingTreeChanges, indexChanges, untrackedChanges, mergeChanges } = repo.state;
@@ -31,7 +32,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const changelistScmProvider = new ChangelistScmProvider(api, changelistStore);
 	context.subscriptions.push(changelistScmProvider);
 
-	const commitPanelProvider = new CommitPanelViewProvider(context.extensionUri, api, changelistStore);
+	const pushPreview = new PushPreviewPanel(context.extensionUri, api);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('gitTools.openPushPreview', (branch?: string) => pushPreview.show(branch)),
+	);
+
+	const commitPanelProvider = new CommitPanelViewProvider(context.extensionUri, api, changelistStore, pushPreview);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanelProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
@@ -45,7 +51,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gitTools.filterGraphBranch', (ref: string) => graphViewProvider.filterBranch(ref)),
 	);
 
-	const branchesViewProvider = new BranchesViewProvider(context.extensionUri, api);
+	const branchesViewProvider = new BranchesViewProvider(context.extensionUri, api, pushPreview);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(BranchesViewProvider.viewType, branchesViewProvider),
 	);

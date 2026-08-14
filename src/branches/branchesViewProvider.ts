@@ -3,6 +3,7 @@ import { createTranslator } from '../shared/localization';
 import type { API } from '../gitApi/git.d';
 import { GitRefType } from '../gitApi/refType';
 import { spawnGit } from '../gitApi/spawnGit';
+import type { PushPreviewPanel } from '../pushPreview/pushPreviewPanel';
 import type {
 	BranchTreeItemDto,
 	BranchesToExtensionMessage,
@@ -18,6 +19,7 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly api: API,
+		private readonly pushPreview: PushPreviewPanel,
 	) {}
 
 	// Phase 3+ scope: first repository only, matching the commit panel and graph view.
@@ -65,17 +67,7 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 			repo.getBranches({ remote: true }),
 			repo.getRefs({ pattern: 'refs/tags' }),
 		]);
-		const syncCounts = new Map<string, { ahead: number; behind: number }>();
-		await Promise.all(localRefs.flatMap((ref) => ref.name ? [(async () => {
-			const branch = await repo.getBranch(ref.name!);
-			if (!branch.upstream) return;
-			const upstream = branch.upstream.name.startsWith(`${branch.upstream.remote}/`)
-				? branch.upstream.name
-				: `${branch.upstream.remote}/${branch.upstream.name}`;
-			const output = (await spawnGit(repo.rootUri.fsPath, ['rev-list', '--left-right', '--count', `${ref.name}...${upstream}`])).stdout.trim();
-			const [ahead = 0, behind = 0] = output.split(/\s+/).map(Number);
-			syncCounts.set(ref.name!, { ahead, behind });
-		})()] : []));
+		const syncCounts = await this.getSyncCounts(repo.rootUri.fsPath);
 		for (const ref of [...localRefs, ...remoteRefs, ...tagRefs]) {
 			if (!ref.name) {
 				continue;
@@ -184,32 +176,25 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private async pushBranch(name: string): Promise<void> {
-		const repo = this.repo;
-		if (!repo) return;
-		const branch = await repo.getBranch(name);
-		let remote = branch.upstream?.remote;
-		let remoteBranch = branch.upstream?.name;
-		let setUpstream = false;
-		if (!remote) {
-			const remotes = repo.state.remotes.filter((item) => item.pushUrl || item.fetchUrl);
-			if (remotes.length === 0) {
-				void vscode.window.showWarningMessage(this.text('No Git remote is configured.', '설정된 Git 원격 저장소가 없습니다.'));
-				return;
-			}
-			const picked = remotes.length === 1 ? remotes[0] : await vscode.window.showQuickPick(
-				remotes.map((item) => ({ label: item.name, description: item.pushUrl ?? item.fetchUrl, remote: item })),
-				{ placeHolder: this.text(`Select a remote for ${name}`, `${name} 브랜치를 푸시할 원격 저장소 선택`) },
-			).then((item) => item?.remote);
-			if (!picked) return;
-			remote = picked.name;
-			remoteBranch = name;
-			setUpstream = true;
+		await this.pushPreview.show(name);
+	}
+
+	private async getSyncCounts(repoRoot: string): Promise<Map<string, { ahead: number; behind: number }>> {
+		const counts = new Map<string, { ahead: number; behind: number }>();
+		const output = (await spawnGit(repoRoot, [
+			'for-each-ref',
+			'--format=%(refname:short)%00%(upstream:short)%00%(upstream:track,nobracket)',
+			'refs/heads',
+		], { env: { LC_ALL: 'C', LANG: 'C' } })).stdout;
+		for (const line of output.split(/\r?\n/)) {
+			if (!line) continue;
+			const [branch, upstream, tracking = ''] = line.split('\0');
+			if (!branch || !upstream) continue;
+			const ahead = Number(/ahead (\d+)/.exec(tracking)?.[1] ?? 0);
+			const behind = Number(/behind (\d+)/.exec(tracking)?.[1] ?? 0);
+			counts.set(branch, { ahead, behind });
 		}
-		this.post({ type: 'busy', busy: true });
-		await repo.push(remote, remoteBranch ?? name, setUpstream);
-		await repo.status();
-		await this.sendBranches();
-		void vscode.window.showInformationMessage(this.text(`Pushed ${name} to ${remote}.`, `${name} 브랜치를 ${remote}에 푸시했습니다.`));
+		return counts;
 	}
 
 	private async updateRef(kind: 'local' | 'remote' | 'tag', name: string): Promise<void> {
@@ -265,7 +250,7 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		if (confirmed !== this.text('Delete', '삭제')) return;
 		this.post({ type: 'busy', busy: true });
 		if (kind === 'tag') await repo.deleteTag(name);
-		else if (kind === 'local') await repo.deleteBranch(name, false);
+		else if (kind === 'local') await this.deleteLocalBranch(name);
 		else {
 			const separator = name.indexOf('/');
 			if (separator <= 0 || separator === name.length - 1) throw new Error(this.text('Invalid remote branch name.', '원격 브랜치 이름이 올바르지 않습니다.'));
@@ -276,6 +261,26 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 		}
 		await repo.status();
 		await this.sendBranches();
+	}
+
+	private async deleteLocalBranch(name: string): Promise<void> {
+		const repo = this.repo;
+		if (!repo) return;
+		try {
+			await repo.deleteBranch(name, false);
+		} catch (error) {
+			const forceDelete = this.text('Force Delete', '강제 삭제');
+			const confirmed = await vscode.window.showWarningMessage(
+				this.text(
+					`Git could not safely delete “${name}”. It may contain commits that have not been merged. Force delete it?`,
+					`Git이 “${name}” 브랜치를 안전하게 삭제하지 못했습니다. 병합되지 않은 커밋이 있을 수 있습니다. 강제로 삭제할까요?`,
+				),
+				{ modal: true, detail: error instanceof Error ? error.message : String(error) },
+				forceDelete,
+			);
+			if (confirmed !== forceDelete) return;
+			await repo.deleteBranch(name, true);
+		}
 	}
 
 	private getHtml(webview: vscode.Webview): string {
