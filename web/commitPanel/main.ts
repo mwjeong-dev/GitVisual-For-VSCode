@@ -22,6 +22,9 @@ let selectedKeys = new Set<string>();
 let lastCommitMessage = '';
 let renamingChangelistId: string | undefined;
 let creatingChangelist = false;
+let fileFilterQuery = '';
+let statusFilter = 'all';
+let selectedOnlyFilter = false;
 const selectedFileUris = new Set<string>();
 const knownFileUris = new Set<string>();
 const COMMIT_BOX_HEIGHT_KEY = 'gitvisual.commitPanel.commitBoxHeight';
@@ -34,6 +37,20 @@ root.innerHTML = `
 			<button id="refresh-files" title="${text('Refresh changes', '변경 사항 새로고침')}">↻</button>
 			<button id="expand-all" title="${text('Expand all', '모두 펼치기')}">↕</button>
 			<button id="collapse-all" title="${text('Collapse all', '모두 접기')}">↥</button>
+		</div>
+		<div class="file-filter-bar">
+			<input id="file-filter" type="search" placeholder="${text('Filter files or paths', '파일 또는 경로 검색')}" aria-label="${text('Filter files or paths', '파일 또는 경로 검색')}">
+			<select id="status-filter" title="${text('Filter by status', '상태별 필터')}">
+				<option value="all">${text('All statuses', '모든 상태')}</option>
+				<option value="modified">${text('Modified', '수정됨')}</option>
+				<option value="added">${text('Added', '추가됨')}</option>
+				<option value="deleted">${text('Deleted', '삭제됨')}</option>
+				<option value="renamed">${text('Renamed', '이름 변경됨')}</option>
+				<option value="untracked">${text('Untracked', '추적 안 됨')}</option>
+			</select>
+			<button id="selected-only-filter" class="selected-only-filter" type="button" aria-pressed="false" title="${text('Show selected files only', '선택한 파일만 표시')}">${text('Selected', '선택됨')}</button>
+			<span id="filter-summary" class="filter-summary"></span>
+			<button id="clear-file-filter" class="filter-clear" type="button" title="${text('Clear filters', '필터 지우기')}" aria-label="${text('Clear filters', '필터 지우기')}">×</button>
 		</div>
 		<div class="file-list" id="file-list"></div>
 		<div class="diff-view" id="diff-view"></div>
@@ -55,7 +72,16 @@ style.textContent = `
 	.panel-toolbar { flex: 0 0 auto; display: flex; gap: 4px; align-items: center; min-height: 38px; padding: 3px 9px; border-bottom: 1px solid var(--vscode-panel-border); }
 	.panel-toolbar button { width: 30px; height: 28px; padding: 0; color: var(--vscode-icon-foreground); background: transparent; font-size: 18px; }
 	.panel-toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
+	.file-filter-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 3px 9px; border-bottom: 1px solid var(--vscode-panel-border); }
+	.file-filter-bar input[type="search"] { flex: 1 1 180px; min-width: 80px; height: 24px; padding: 2px 7px; box-sizing: border-box; }
+	.file-filter-bar select { flex: 0 1 116px; min-width: 76px; height: 24px; }
+	.file-filter-bar button { flex: 0 0 auto; height: 24px; padding: 2px 7px; color: var(--vscode-foreground); background: transparent; }
+	.file-filter-bar button:hover { background: var(--vscode-toolbar-hoverBackground); }
+	.file-filter-bar .selected-only-filter[aria-pressed="true"] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+	.file-filter-bar .filter-summary { flex: 0 0 auto; color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
+	.file-filter-bar .filter-clear { width: 24px; padding: 0; font-size: 17px; }
 	.file-list { flex: 1 1 auto; min-height: 180px; overflow: auto; border-bottom: 1px solid var(--vscode-panel-border); }
+	.file-list-empty { padding: 18px 12px; color: var(--vscode-descriptionForeground); text-align: center; }
 
 	.group-header { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 1px 10px; cursor: pointer; }
 	.group-header:hover { background: var(--vscode-list-hoverBackground); }
@@ -110,7 +136,7 @@ style.textContent = `
 	.commit-actions { display: flex; gap: 10px; }
 	.commit-actions button { min-width: 108px; }
 	.amend-row { display: flex; align-items: center; gap: 4px; font-size: 0.9em; cursor: pointer; }
-	textarea, select, input[type="text"] { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: inherit; }
+	textarea, select, input[type="text"], input[type="search"] { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: inherit; }
 	textarea { resize: none; flex: 1; min-height: 42px; padding: 8px; }
 	button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 8px; cursor: pointer; }
 	button:hover { background: var(--vscode-button-hoverBackground); }
@@ -119,6 +145,11 @@ style.textContent = `
 document.head.appendChild(style);
 
 const fileListEl = document.getElementById('file-list')!;
+const fileFilterEl = document.getElementById('file-filter') as HTMLInputElement;
+const statusFilterEl = document.getElementById('status-filter') as HTMLSelectElement;
+const selectedOnlyFilterEl = document.getElementById('selected-only-filter') as HTMLButtonElement;
+const filterSummaryEl = document.getElementById('filter-summary')!;
+const clearFileFilterEl = document.getElementById('clear-file-filter') as HTMLButtonElement;
 const diffViewEl = document.getElementById('diff-view')!;
 const commitTargetEl = document.getElementById('commit-target') as HTMLSelectElement;
 const commitMessageEl = document.getElementById('commit-message') as HTMLTextAreaElement;
@@ -161,6 +192,34 @@ window.addEventListener('resize', () => applyCommitBoxHeight(commitBoxHeight));
 document.getElementById('refresh-files')!.addEventListener('click', () => post({ type: 'refresh' }));
 document.getElementById('expand-all')!.addEventListener('click', () => { collapsedGroups.clear(); renderFileList(); });
 document.getElementById('collapse-all')!.addEventListener('click', () => { for (const group of buildGroups()) collapsedGroups.add(group.id); renderFileList(); });
+
+let fileFilterTimer: number | undefined;
+fileFilterEl.addEventListener('input', () => {
+	window.clearTimeout(fileFilterTimer);
+	fileFilterTimer = window.setTimeout(() => {
+		fileFilterQuery = fileFilterEl.value.trim();
+		renderFileList();
+	}, 120);
+});
+statusFilterEl.addEventListener('change', () => {
+	statusFilter = statusFilterEl.value;
+	renderFileList();
+});
+selectedOnlyFilterEl.addEventListener('click', () => {
+	selectedOnlyFilter = !selectedOnlyFilter;
+	selectedOnlyFilterEl.setAttribute('aria-pressed', String(selectedOnlyFilter));
+	renderFileList();
+});
+clearFileFilterEl.addEventListener('click', () => {
+	fileFilterQuery = '';
+	statusFilter = 'all';
+	selectedOnlyFilter = false;
+	fileFilterEl.value = '';
+	statusFilterEl.value = 'all';
+	selectedOnlyFilterEl.setAttribute('aria-pressed', 'false');
+	renderFileList();
+	fileFilterEl.focus();
+});
 
 function updateCommitButtons(): void {
 	const count = selectedFileUris.size;
@@ -246,19 +305,39 @@ interface RenderGroup {
 	readonly files: ChangedFileDto[];
 	readonly changelistId?: string;
 	readonly isDefault?: boolean;
+	readonly totalCount: number;
+}
+
+function globPattern(pattern: string): RegExp {
+	const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+	return new RegExp(`^${escaped}$`, 'i');
+}
+
+function matchesFileFilters(file: ChangedFileDto): boolean {
+	if (selectedOnlyFilter && !selectedFileUris.has(file.uri)) return false;
+	const normalizedStatus = file.statusLabel.toLocaleLowerCase();
+	if (statusFilter !== 'all' && normalizedStatus !== statusFilter) return false;
+	const query = fileFilterQuery.toLocaleLowerCase();
+	if (!query) return true;
+	const normalizedPath = file.relPath.replace(/\\/g, '/').toLocaleLowerCase();
+	const fileName = normalizedPath.split('/').at(-1) ?? normalizedPath;
+	if (!/[*?]/.test(query)) return normalizedPath.includes(query);
+	const pattern = globPattern(query);
+	return pattern.test(normalizedPath) || pattern.test(fileName);
 }
 
 function buildGroups(): RenderGroup[] {
-	const groups: RenderGroup[] = changelists.map((changelist) => ({
-		id: changelist.id,
-		label: changelist.name,
-		files: files.filter((f) => !f.isUntracked && f.changelistId === changelist.id),
-		changelistId: changelist.id,
-		isDefault: changelist.isDefault,
-	}));
+	const filterActive = Boolean(fileFilterQuery || statusFilter !== 'all' || selectedOnlyFilter);
+	const groups: RenderGroup[] = changelists.flatMap((changelist) => {
+		const allFiles = files.filter((file) => !file.isUntracked && file.changelistId === changelist.id);
+		const matchingFiles = allFiles.filter(matchesFileFilters);
+		if (filterActive && matchingFiles.length === 0) return [];
+		return [{ id: changelist.id, label: changelist.name, files: matchingFiles, totalCount: allFiles.length, changelistId: changelist.id, isDefault: changelist.isDefault }];
+	});
 	const unversioned = files.filter((f) => f.isUntracked);
-	if (unversioned.length > 0) {
-		groups.push({ id: 'unversioned', label: text('Unversioned Files', '버전이 없는 파일'), files: unversioned });
+	const matchingUnversioned = unversioned.filter(matchesFileFilters);
+	if (matchingUnversioned.length > 0) {
+		groups.push({ id: 'unversioned', label: text('Unversioned Files', '버전이 없는 파일'), files: matchingUnversioned, totalCount: unversioned.length });
 	}
 	return groups;
 }
@@ -298,6 +377,7 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 			updateGroupCheckbox(fileContainer);
 		}
 		updateCommitButtons();
+		if (selectedOnlyFilter) renderFileList();
 	});
 	item.appendChild(checkbox);
 
@@ -384,6 +464,7 @@ function renderGroupHeader(group: RenderGroup, fileContainer: HTMLElement): HTML
 			}
 		}
 		updateCommitButtons();
+		if (selectedOnlyFilter) renderFileList();
 	});
 	header.appendChild(checkbox);
 
@@ -422,7 +503,9 @@ function renderGroupHeader(group: RenderGroup, fileContainer: HTMLElement): HTML
 
 	const count = document.createElement('span');
 	count.className = 'count';
-	count.textContent = `${group.files.length} ${text(group.files.length === 1 ? 'file' : 'files', '개 파일')}`;
+	count.textContent = group.files.length === group.totalCount
+		? `${group.files.length} ${text(group.files.length === 1 ? 'file' : 'files', '개 파일')}`
+		: `${group.files.length} / ${group.totalCount} ${text('files', '개 파일')}`;
 	header.appendChild(count);
 
 	if (group.changelistId && !group.isDefault) {
@@ -492,7 +575,18 @@ const collapsedGroups = new Set<string>();
 
 function renderFileList(): void {
 	fileListEl.innerHTML = '';
-	for (const group of buildGroups()) {
+	const groups = buildGroups();
+	const visibleCount = groups.reduce((count, group) => count + group.files.length, 0);
+	const filterActive = Boolean(fileFilterQuery || statusFilter !== 'all' || selectedOnlyFilter);
+	filterSummaryEl.textContent = filterActive ? `${visibleCount} / ${files.length}` : `${files.length}`;
+	clearFileFilterEl.style.visibility = filterActive ? 'visible' : 'hidden';
+	if (filterActive && visibleCount === 0) {
+		const empty = document.createElement('div');
+		empty.className = 'file-list-empty';
+		empty.textContent = text('No files match the current filters.', '현재 필터와 일치하는 파일이 없습니다.');
+		fileListEl.appendChild(empty);
+	}
+	for (const group of groups) {
 		const fileContainer = document.createElement('div');
 		fileContainer.className = 'group-files';
 		if (collapsedGroups.has(group.id)) {
