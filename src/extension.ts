@@ -57,7 +57,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerWebviewViewProvider(BranchesViewProvider.viewType, branchesViewProvider),
 	);
 
-	const editorHistory = new EditorHistoryController(api);
+	const editorHistory = new EditorHistoryController(api, context.extensionUri);
 	context.subscriptions.push(
 		editorHistory,
 		vscode.commands.registerCommand('gitTools.toggleBlame', () => editorHistory.toggleBlame()),

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { API, Repository } from '../gitApi/git.d';
 import { relPathFromRepoRoot } from '../gitApi/repoContext';
 import { readBlame, readLineHistory, type BlameLine } from './historyReader';
+import { LineHistoryPanel } from './lineHistoryPanel';
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
@@ -14,10 +15,13 @@ export class EditorHistoryController implements vscode.Disposable {
 		after: { margin: '0 0 0 3em', color: new vscode.ThemeColor('editorCodeLens.foreground') },
 		isWholeLine: true,
 	});
+	private readonly lineHistoryPanel: LineHistoryPanel;
 
-	constructor(private readonly api: API) {
+	constructor(private readonly api: API, extensionUri: vscode.Uri) {
+		this.lineHistoryPanel = new LineHistoryPanel(extensionUri, api);
 		this.disposables.push(
 			this.decoration,
+			this.lineHistoryPanel,
 			vscode.window.onDidChangeActiveTextEditor(() => void this.refresh()),
 			vscode.workspace.onDidSaveTextDocument((document) => {
 				if (document === vscode.window.activeTextEditor?.document) void this.refresh();
@@ -74,19 +78,16 @@ export class EditorHistoryController implements vscode.Disposable {
 			void vscode.window.showErrorMessage(`Could not load line history: ${error instanceof Error ? error.message : String(error)}`);
 			return;
 		}
-		if (commits.length === 0) {
-			void vscode.window.showInformationMessage('No committed history was found for the selected lines.');
-			return;
-		}
-		const picked = await vscode.window.showQuickPick(
-			commits.map((commit) => ({
-				label: `$(git-commit) ${commit.subject || '(no subject)'}`,
-				description: `${commit.hash.slice(0, 8)} · ${commit.author} · ${this.formatDate(commit.date)}`,
-				commit,
-			})),
-			{ placeHolder: `History of lines ${startLine}-${Math.max(startLine, endLine)} in ${relPath}`, matchOnDescription: true },
-		);
-		if (picked) await this.openCommit(repo, editor.document.uri, picked.commit.hash, picked.commit.parents[0]);
+		const selectionRange = editor.selection.isEmpty
+			? editor.document.lineAt(editor.selection.active.line).range
+			: editor.selection;
+		this.lineHistoryPanel.show(repo, editor.document.uri, {
+			relativePath: relPath,
+			startLine,
+			endLine: Math.max(startLine, endLine),
+			selectedText: editor.document.getText(selectionRange),
+			commits,
+		});
 	}
 
 	async openCommitFromCommand(uriString: string, hash: string, parent?: string): Promise<void> {
@@ -122,11 +123,6 @@ export class EditorHistoryController implements vscode.Disposable {
 		const left = this.api.toGitUri(uri, parent);
 		const right = this.api.toGitUri(uri, hash);
 		await vscode.commands.executeCommand('vscode.diff', left, right, `${path.basename(uri.fsPath)} (${hash.slice(0, 8)})`);
-	}
-
-	private formatDate(value: string): string {
-		const date = new Date(value);
-		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 	}
 
 	private escape(value: string): string {

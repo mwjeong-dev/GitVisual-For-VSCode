@@ -62,7 +62,7 @@ The bottom-panel GitVisual view renders a visual history from `git log --all --t
 - Toggle inline blame from the editor title or Command Palette
 - Inspect author, date, hash, and summary in blame hovers
 - Open the related commit or previous revision
-- Select lines and run `GitVisual: Show Line Range History`
+- Select lines and run `GitVisual: Show Line Range History` to inspect related commits and preview each change inside a dedicated history panel; open the full file diff only when needed
 
 ## Safety
 
