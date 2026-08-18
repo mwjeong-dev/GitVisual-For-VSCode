@@ -53,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	const branchesViewProvider = new BranchesViewProvider(context.extensionUri, api, pushPreview);
 	context.subscriptions.push(
+		branchesViewProvider,
 		vscode.window.registerWebviewViewProvider(BranchesViewProvider.viewType, branchesViewProvider),
 	);
 
@@ -86,10 +87,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		api.onDidOpenRepository((repo) => {
 			wireRepository(repo);
 			void reconcileAll();
+			branchesViewProvider.startAutoFetch();
 		}),
 		api.onDidCloseRepository(() => void reconcileAll()),
 	);
 	await reconcileAll();
+	branchesViewProvider.startAutoFetch();
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('gitTools.showChangedFiles', () => {

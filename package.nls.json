@@ -7,5 +7,7 @@
   "view.commit": "Commit",
   "view.graph": "Graph",
   "command.toggleBlame": "GitVisual: Toggle Inline Blame",
-  "command.lineHistory": "GitVisual: Show Line Range History"
+  "command.lineHistory": "GitVisual: Show Line Range History",
+  "configuration.fetch.auto.description": "Automatically fetch remote changes in the background and when the Branches view becomes visible.",
+  "configuration.fetch.intervalMinutes.description": "Interval in minutes between automatic fetches."
 }

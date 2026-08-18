@@ -7,5 +7,7 @@
   "view.commit": "커밋",
   "view.graph": "그래프",
   "command.toggleBlame": "GitVisual: 인라인 Blame 켜기/끄기",
-  "command.lineHistory": "GitVisual: 선택 라인 범위 이력 보기"
+  "command.lineHistory": "GitVisual: 선택 라인 범위 이력 보기",
+  "configuration.fetch.auto.description": "백그라운드에서 그리고 브랜치 보기가 표시될 때 원격 변경 사항을 자동으로 Fetch합니다.",
+  "configuration.fetch.intervalMinutes.description": "자동 Fetch 사이의 간격(분)입니다."
 }
