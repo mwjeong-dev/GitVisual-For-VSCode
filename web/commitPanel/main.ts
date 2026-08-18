@@ -57,13 +57,19 @@ style.textContent = `
 	.panel-toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
 	.file-list { flex: 1 1 auto; min-height: 180px; overflow: auto; border-bottom: 1px solid var(--vscode-panel-border); }
 
-	.group-header { display: flex; align-items: center; gap: 5px; min-height: 28px; padding: 2px 9px; cursor: pointer; }
+	.group-header { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 1px 10px; cursor: pointer; }
 	.group-header:hover { background: var(--vscode-list-hoverBackground); }
 	.group-header .chevron { flex: 0 0 16px; width: 16px; height: 16px; color: var(--vscode-icon-foreground); opacity: 0.9; }
 	.group-header .chevron svg { display: block; width: 16px; height: 16px; }
 	.group-header .chevron.collapsed svg { transform: rotate(-90deg); }
 	.group-files.collapsed { display: none; }
-	.group-header input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+	.file-list input[type="checkbox"] { appearance: none; -webkit-appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 14px; height: 14px; margin: 0; border: 1px solid var(--vscode-checkbox-border, var(--vscode-contrastBorder, #6b6b6b)); border-radius: 2px; background: var(--vscode-checkbox-background, var(--vscode-input-background)); cursor: pointer; }
+	.file-list input[type="checkbox"]::before { content: ''; width: 7px; height: 4px; border: solid var(--vscode-checkbox-foreground, var(--vscode-foreground)); border-width: 0 0 2px 2px; transform: rotate(-45deg) translate(1px, -1px) scale(0); transform-origin: center; }
+	.file-list input[type="checkbox"]:checked { border-color: var(--vscode-focusBorder); background: var(--vscode-checkbox-selectBackground, var(--vscode-focusBorder)); }
+	.file-list input[type="checkbox"]:checked::before { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
+	.file-list input[type="checkbox"]:indeterminate::before { width: 8px; height: 2px; border: 0; background: var(--vscode-checkbox-foreground, var(--vscode-foreground)); transform: scale(1); }
+	.file-list input[type="checkbox"]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+	.group-header > input[type="checkbox"] { width: 15px; height: 15px; }
 	.group-header .group-label { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.group-header .group-label input { width: 100%; box-sizing: border-box; }
 	.group-header .count { opacity: 0.65; font-size: 0.9em; flex: 0 0 auto; }
@@ -74,14 +80,15 @@ style.textContent = `
 	.new-changelist-row:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
 	.new-changelist-row input { width: 100%; box-sizing: border-box; }
 
-	.file-item { display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 1px 9px 1px 52px; cursor: pointer; min-width: 540px; border-radius: 3px; }
+	.file-item { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 53px; cursor: pointer; min-width: 0; box-sizing: border-box; }
 	.file-item:hover { background: var(--vscode-list-hoverBackground); }
-	.file-item.selected { background: var(--vscode-list-activeSelectionBackground); }
-	.file-item input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
-	.file-item .path { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-	.file-item .name { color: var(--vscode-textLink-foreground); font-size: 13px; }
+	.file-item.selected { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-list-activeSelectionForeground)); }
+	.file-item.selected:hover { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+	.file-item .path { display: flex; align-items: baseline; gap: 8px; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+	.file-item .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-foreground); font-size: 13px; }
 	.file-item.untracked .name { color: var(--vscode-gitDecoration-untrackedResourceForeground); }
-	.file-item .dir { color: var(--vscode-descriptionForeground); margin-left: 6px; font-size: 12px; }
+	.file-item.selected .name { color: inherit; }
+	.file-item .dir { flex: 1 1 auto; min-width: 32px; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 12px; }
 	.file-item .move-select { flex: 0 0 auto; visibility: hidden; max-width: 100px; font-size: 0.85em; }
 	.file-item:hover .move-select, .file-item.selected .move-select { visibility: visible; }
 
