@@ -128,6 +128,18 @@
           "type": "number",
           "default": 300,
           "description": "Number of commits to load in the graph view."
+        },
+        "gitTools.fetch.auto": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.fetch.auto.description%"
+        },
+        "gitTools.fetch.intervalMinutes": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 1440,
+          "description": "%configuration.fetch.intervalMinutes.description%"
         }
       }
     }

@@ -10,19 +10,37 @@ import type {
 	ExtensionToBranchesMessage,
 } from '../shared/protocol/branches';
 
-export class BranchesViewProvider implements vscode.WebviewViewProvider {
+export class BranchesViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
 	static readonly viewType = 'gitTools.branchesView';
 
 	private view: vscode.WebviewView | undefined;
 	private readonly text = createTranslator(vscode.env.language);
 	private autoFetchInProgress = false;
 	private lastAutoFetchAt = 0;
+	private autoFetchTimer: ReturnType<typeof setInterval> | undefined;
+	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly api: API,
 		private readonly pushPreview: PushPreviewPanel,
-	) {}
+	) {
+		this.disposables.push(vscode.workspace.onDidChangeConfiguration((event) => {
+			if (!event.affectsConfiguration('gitTools.fetch')) return;
+			this.resetAutoFetchTimer();
+			void this.autoFetchRemoteState();
+		}));
+	}
+
+	startAutoFetch(): void {
+		this.resetAutoFetchTimer();
+		void this.autoFetchRemoteState();
+	}
+
+	dispose(): void {
+		if (this.autoFetchTimer) clearInterval(this.autoFetchTimer);
+		for (const disposable of this.disposables) disposable.dispose();
+	}
 
 	// Phase 3+ scope: first repository only, matching the commit panel and graph view.
 	private get repo() {
@@ -111,6 +129,7 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 					if (this.repo) {
 						this.post({ type: 'busy', busy: true });
 						await this.repo.fetch({ all: true, prune: true });
+						this.lastAutoFetchAt = Date.now();
 						await this.repo.status();
 						await this.sendBranches();
 					}
@@ -157,12 +176,18 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 
 	private async autoFetchRemoteState(): Promise<void> {
 		const repo = this.repo;
-		if (!repo || repo.state.remotes.length === 0 || this.autoFetchInProgress || Date.now() - this.lastAutoFetchAt < 60_000) return;
+		if (
+			!this.isAutoFetchEnabled()
+			|| !repo
+			|| repo.state.remotes.length === 0
+			|| this.autoFetchInProgress
+			|| Date.now() - this.lastAutoFetchAt < this.getAutoFetchIntervalMs()
+		) return;
 		this.autoFetchInProgress = true;
 		this.lastAutoFetchAt = Date.now();
 		try {
 			this.post({ type: 'busy', busy: true });
-			await repo.fetch({ all: true, prune: true });
+			await repo.fetch({ all: true });
 			await repo.status();
 			await this.sendBranches();
 		} catch (error) {
@@ -175,6 +200,24 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider {
 			this.autoFetchInProgress = false;
 			this.post({ type: 'busy', busy: false });
 		}
+	}
+
+	private resetAutoFetchTimer(): void {
+		if (this.autoFetchTimer) {
+			clearInterval(this.autoFetchTimer);
+			this.autoFetchTimer = undefined;
+		}
+		if (!this.isAutoFetchEnabled()) return;
+		this.autoFetchTimer = setInterval(() => void this.autoFetchRemoteState(), this.getAutoFetchIntervalMs());
+	}
+
+	private isAutoFetchEnabled(): boolean {
+		return vscode.workspace.getConfiguration('gitTools.fetch').get<boolean>('auto', true);
+	}
+
+	private getAutoFetchIntervalMs(): number {
+		const minutes = vscode.workspace.getConfiguration('gitTools.fetch').get<number>('intervalMinutes', 20);
+		return Math.max(1, minutes) * 60_000;
 	}
 
 	private async createBranch(from: string, suggestedName?: string): Promise<void> {
