@@ -114,10 +114,10 @@ style.textContent = `
 	.file-item.selected { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-list-activeSelectionForeground)); }
 	.file-item.selected:hover { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 	.file-item .path { display: flex; align-items: baseline; gap: 8px; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
-	.file-item .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-foreground); font-size: 13px; }
+	.file-item .name { flex: 0 0 auto; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; color: var(--vscode-foreground); font-size: 13px; }
 	.file-item.untracked .name { color: var(--vscode-gitDecoration-untrackedResourceForeground); }
 	.file-item.selected .name { color: inherit; }
-	.file-item .dir { flex: 1 1 auto; min-width: 32px; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 12px; }
+	.file-item .dir { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 12px; }
 	.file-item .move-select { flex: 0 0 auto; visibility: hidden; max-width: 100px; font-size: 0.85em; }
 	.file-item:hover .move-select, .file-item.selected .move-select { visibility: visible; }
 
