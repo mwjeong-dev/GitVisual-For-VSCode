@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { getBuiltinGitApi } from './gitApi/builtinGit';
 import type { Repository } from './gitApi/git.d';
 import { ChangelistStore } from './scm/changelistStore';
-import { ChangelistScmProvider } from './scm/changelistProvider';
 import { CommitPanelViewProvider } from './commitPanel/commitPanelViewProvider';
 import { GraphViewProvider } from './graph/graphViewProvider';
 import { BranchesViewProvider } from './branches/branchesViewProvider';
@@ -29,9 +28,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const changelistStore = new ChangelistStore(context.workspaceState);
 	context.subscriptions.push(changelistStore);
 
-	const changelistScmProvider = new ChangelistScmProvider(api, changelistStore);
-	context.subscriptions.push(changelistScmProvider);
-
 	const pushPreview = new PushPreviewPanel(context.extensionUri, api);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('gitTools.openPushPreview', (branch?: string) => pushPreview.show(branch)),
@@ -57,10 +53,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.window.registerWebviewViewProvider(BranchesViewProvider.viewType, branchesViewProvider),
 	);
 
-	const editorHistory = new EditorHistoryController(api);
+	const editorHistory = new EditorHistoryController(api, context.extensionUri);
 	context.subscriptions.push(
 		editorHistory,
 		vscode.commands.registerCommand('gitTools.toggleBlame', () => editorHistory.toggleBlame()),
+		vscode.commands.registerCommand('gitTools.showFileHistory', () => editorHistory.showFileHistory()),
 		vscode.commands.registerCommand('gitTools.showLineHistory', () => editorHistory.showLineHistory()),
 		vscode.commands.registerCommand(
 			'gitTools.openBlameCommit',
@@ -72,7 +69,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		for (const repo of api.repositories) {
 			await changelistStore.reconcile(allChangedUris(repo));
 		}
-		changelistScmProvider.refresh();
 		await commitPanelProvider.refresh();
 		await graphViewProvider.refresh();
 		await branchesViewProvider.refresh();

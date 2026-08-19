@@ -38,6 +38,37 @@ describe('parseLineHistory', () => {
 				authorMail: 'ada@example.com',
 				date: '2026-01-02T03:04:05Z',
 				subject: 'Change line',
+				hunks: [],
+			},
+		]);
+	});
+
+	it('parses the line-range patch attached to each commit', () => {
+		const output = `\x1eaaa\x1fbbb\x1fAda\x1fada@example.com\x1f2026-01-02T03:04:05Z\x1fRefine check
+diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -10,3 +10,3 @@
+-if (!user) {
++if (!user || user.disabled) {
+   return false;
+ }
+`;
+		const [commit] = parseLineHistory(output);
+		expect(commit.subject).toBe('Refine check');
+		expect(commit.hunks).toEqual([
+			{
+				oldStart: 10,
+				oldLines: 3,
+				newStart: 10,
+				newLines: 3,
+				sectionHeading: '',
+				lines: [
+					{ type: 'del', content: 'if (!user) {', oldLineNumber: 10 },
+					{ type: 'add', content: 'if (!user || user.disabled) {', newLineNumber: 10 },
+					{ type: 'context', content: '  return false;', oldLineNumber: 11, newLineNumber: 11 },
+					{ type: 'context', content: '}', oldLineNumber: 12, newLineNumber: 12 },
+				],
 			},
 		]);
 	});

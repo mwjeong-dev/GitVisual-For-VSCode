@@ -7,5 +7,6 @@
   "view.commit": "Confirmar cambios",
   "view.graph": "Gráfico",
   "command.toggleBlame": "GitVisual: Alternar Blame en línea",
+  "command.fileHistory": "GitVisual: Mostrar historial del archivo",
   "command.lineHistory": "GitVisual: Mostrar historial de las líneas seleccionadas"
 }

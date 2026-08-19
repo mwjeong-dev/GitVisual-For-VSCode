@@ -7,5 +7,6 @@
   "view.commit": "提交",
   "view.graph": "圖形",
   "command.toggleBlame": "GitVisual: 切換行內 Blame",
+  "command.fileHistory": "GitVisual: 顯示檔案歷史記錄",
   "command.lineHistory": "GitVisual: 顯示所選行的歷史記錄"
 }
