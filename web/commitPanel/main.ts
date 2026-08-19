@@ -372,6 +372,7 @@ function showFileContextMenu(x: number, y: number, file: ChangedFileDto): void {
 		row.addEventListener('click', () => { closeFileContextMenu(); action(); }); menu.appendChild(row);
 	};
 	item('Open File', '파일 열기', () => post({ type: 'openFile', uri: file.uri }));
+	if (file.canRollback) item('Rollback…', '롤백…', () => post({ type: 'rollbackFile', uri: file.uri }));
 	item('Copy Relative Path', '상대 경로 복사', () => post({ type: 'copyRelativePath', path: file.relPath }));
 	const separator = document.createElement('div'); separator.className = 'context-separator'; menu.appendChild(separator);
 	item('Reveal in File Explorer', '파일 탐색기에서 표시', () => post({ type: 'revealFileInOS', uri: file.uri }));

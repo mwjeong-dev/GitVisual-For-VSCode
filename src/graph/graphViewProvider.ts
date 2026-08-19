@@ -15,6 +15,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 	private view: vscode.WebviewView | undefined;
 	private commits: GraphCommitDto[] = [];
 	private readonly detailsCache = new Map<string, GraphCommitDetailsDto>();
+	private readonly detailsRequests = new Map<string, Promise<GraphCommitDetailsDto>>();
 	private selectedRef: string | undefined;
 	private loadGeneration = 0;
 
@@ -282,13 +283,26 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private async sendCommitDetails(hash: string): Promise<void> {
-		const repo = this.repo;
-		if (!repo) return;
 		const cached = this.detailsCache.get(hash);
 		if (cached) {
 			this.post({ type: 'commitDetails', details: cached });
 			return;
 		}
+		let request = this.detailsRequests.get(hash);
+		if (!request) {
+			request = this.loadCommitDetails(hash);
+			this.detailsRequests.set(hash, request);
+			const cleanup = (): void => {
+				if (this.detailsRequests.get(hash) === request) this.detailsRequests.delete(hash);
+			};
+			void request.then(cleanup, cleanup);
+		}
+		this.post({ type: 'commitDetails', details: await request });
+	}
+
+	private async loadCommitDetails(hash: string): Promise<GraphCommitDetailsDto> {
+		const repo = this.repo;
+		if (!repo) throw new Error(this.text('No Git repository is available.', '사용 가능한 Git 저장소가 없습니다.'));
 		const graphCommit = this.commits.find((item) => item.hash === hash);
 		const baseRef = graphCommit?.parents[0] ?? EMPTY_TREE_SHA;
 		const commitPromise = repo.getCommit(hash);
@@ -306,13 +320,14 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		this.post({ type: 'commitMetadata', metadata });
 		const details: GraphCommitDetailsDto = { ...metadata, files: await filesPromise };
 		this.detailsCache.set(hash, details);
-		this.post({ type: 'commitDetails', details });
+		return details;
 	}
 
 	private async openFile(hash: string, uri: vscode.Uri): Promise<void> {
-		const repo = this.repo;
-		if (!repo) return;
-		const baseRef = (await repo.getCommit(hash)).parents[0] ?? EMPTY_TREE_SHA;
+		if (!this.repo) return;
+		const graphCommit = this.commits.find((commit) => commit.hash === hash);
+		const cachedDetails = this.detailsCache.get(hash);
+		const baseRef = graphCommit?.parents[0] ?? cachedDetails?.parents[0] ?? EMPTY_TREE_SHA;
 		const leftUri = this.api.toGitUri(uri, baseRef);
 		const rightUri = this.api.toGitUri(uri, hash);
 		await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${path.basename(uri.fsPath)} (${hash.slice(0, 7)})`);
