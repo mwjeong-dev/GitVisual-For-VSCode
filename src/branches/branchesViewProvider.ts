@@ -257,17 +257,24 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider, vscode.
 		await this.pushPreview.show(name);
 	}
 
-	private async getSyncCounts(repoRoot: string): Promise<Map<string, { ahead: number; behind: number }>> {
-		const counts = new Map<string, { ahead: number; behind: number }>();
+	private async getSyncCounts(repoRoot: string): Promise<Map<string, { ahead: number; behind: number; unpublished?: boolean; comparisonRef?: string }>> {
+		const counts = new Map<string, { ahead: number; behind: number; unpublished?: boolean; comparisonRef?: string }>();
 		const [output, remoteOutput] = await Promise.all([
 			spawnGit(repoRoot, [
 				'for-each-ref',
 				'--format=%(refname:short)%00%(upstream:short)%00%(upstream:track,nobracket)',
 				'refs/heads',
 			], { env: { LC_ALL: 'C', LANG: 'C' } }).then((result) => result.stdout),
-			spawnGit(repoRoot, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes']).then((result) => result.stdout),
+			spawnGit(repoRoot, ['for-each-ref', '--format=%(refname:short)%00%(symref:short)', 'refs/remotes']).then((result) => result.stdout),
 		]);
-		const remoteBranches = remoteOutput.split(/\r?\n/).filter((name) => name && !name.endsWith('/HEAD'));
+		const remoteRefs = remoteOutput.split(/\r?\n/).filter(Boolean).map((line) => {
+			const [name, symbolicTarget] = line.split('\0');
+			return { name, symbolicTarget: symbolicTarget?.replace(/^refs\/remotes\//, '') };
+		});
+		const remoteBranches = remoteRefs.filter((ref) => !ref.symbolicTarget).map((ref) => ref.name).filter(Boolean);
+		const defaultRemoteBranch = remoteRefs.find((ref) => (ref.name === 'origin' || ref.name === 'origin/HEAD') && ref.symbolicTarget)?.symbolicTarget
+			?? remoteRefs.find((ref) => ref.symbolicTarget)?.symbolicTarget
+			?? (remoteBranches.includes('origin/main') ? 'origin/main' : remoteBranches.includes('origin/master') ? 'origin/master' : undefined);
 		const fallbackComparisons: Promise<void>[] = [];
 		for (const line of output.split(/\r?\n/)) {
 			if (!line) continue;
@@ -284,12 +291,18 @@ export class BranchesViewProvider implements vscode.WebviewViewProvider, vscode.
 			const inferredUpstream = remoteBranches.includes(originMatch)
 				? originMatch
 				: sameNameRemotes.length === 1 ? sameNameRemotes[0] : undefined;
-			if (!inferredUpstream) continue;
+			const comparisonRef = inferredUpstream ?? defaultRemoteBranch;
+			if (!comparisonRef) continue;
 			fallbackComparisons.push((async () => {
 				const comparison = (await spawnGit(repoRoot, [
-					'rev-list', '--left-right', '--count', `refs/heads/${branch}...refs/remotes/${inferredUpstream}`,
+					'rev-list', '--left-right', '--count', `refs/heads/${branch}...refs/remotes/${comparisonRef}`,
 				])).stdout.trim().split(/\s+/);
-				counts.set(branch, { ahead: Number(comparison[0] ?? 0), behind: Number(comparison[1] ?? 0) });
+				counts.set(branch, {
+					ahead: Number(comparison[0] ?? 0),
+					behind: Number(comparison[1] ?? 0),
+					unpublished: inferredUpstream === undefined,
+					comparisonRef,
+				});
 			})());
 		}
 		await Promise.all(fallbackComparisons);

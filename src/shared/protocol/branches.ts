@@ -4,6 +4,8 @@ export interface BranchTreeItemDto {
 	readonly isCurrent: boolean;
 	readonly ahead?: number;
 	readonly behind?: number;
+	readonly unpublished?: boolean;
+	readonly comparisonRef?: string;
 }
 
 export type ExtensionToBranchesMessage =
