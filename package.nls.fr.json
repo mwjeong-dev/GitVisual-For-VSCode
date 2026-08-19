@@ -7,5 +7,6 @@
   "view.commit": "Commit",
   "view.graph": "Graphe",
   "command.toggleBlame": "GitVisual : Activer/désactiver le Blame en ligne",
+  "command.fileHistory": "GitVisual : Afficher l’historique du fichier",
   "command.lineHistory": "GitVisual : Afficher l’historique des lignes sélectionnées"
 }

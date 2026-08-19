@@ -7,5 +7,6 @@
   "view.commit": "コミット",
   "view.graph": "グラフ",
   "command.toggleBlame": "GitVisual: インライン Blame の切り替え",
+  "command.fileHistory": "GitVisual: ファイル履歴を表示",
   "command.lineHistory": "GitVisual: 選択行の履歴を表示"
 }

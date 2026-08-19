@@ -57,6 +57,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		editorHistory,
 		vscode.commands.registerCommand('gitTools.toggleBlame', () => editorHistory.toggleBlame()),
+		vscode.commands.registerCommand('gitTools.showFileHistory', () => editorHistory.showFileHistory()),
 		vscode.commands.registerCommand('gitTools.showLineHistory', () => editorHistory.showLineHistory()),
 		vscode.commands.registerCommand(
 			'gitTools.openBlameCommit',

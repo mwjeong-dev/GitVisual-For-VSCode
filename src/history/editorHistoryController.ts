@@ -2,7 +2,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { API, Repository } from '../gitApi/git.d';
 import { relPathFromRepoRoot } from '../gitApi/repoContext';
-import { readBlame, readLineHistory, type BlameLine } from './historyReader';
+import { readBlame, readFileHistory, readLineHistory, type BlameLine } from './historyReader';
+import { classifyLineHistoryIssue, lineHistoryIssueMessage } from './lineHistoryErrors';
 import { LineHistoryPanel } from './lineHistoryPanel';
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
@@ -15,13 +16,16 @@ export class EditorHistoryController implements vscode.Disposable {
 		after: { margin: '0 0 0 3em', color: new vscode.ThemeColor('editorCodeLens.foreground') },
 		isWholeLine: true,
 	});
-	private readonly lineHistoryPanel: LineHistoryPanel;
+	private readonly selectionHistoryPanel: LineHistoryPanel;
+	private readonly fileHistoryPanel: LineHistoryPanel;
 
 	constructor(private readonly api: API, extensionUri: vscode.Uri) {
-		this.lineHistoryPanel = new LineHistoryPanel(extensionUri, api);
+		this.selectionHistoryPanel = new LineHistoryPanel(extensionUri, api, true);
+		this.fileHistoryPanel = new LineHistoryPanel(extensionUri, api);
 		this.disposables.push(
 			this.decoration,
-			this.lineHistoryPanel,
+			this.selectionHistoryPanel,
+			this.fileHistoryPanel,
 			vscode.window.onDidChangeActiveTextEditor(() => void this.refresh()),
 			vscode.workspace.onDidSaveTextDocument((document) => {
 				if (document === vscode.window.activeTextEditor?.document) void this.refresh();
@@ -75,19 +79,47 @@ export class EditorHistoryController implements vscode.Disposable {
 				() => readLineHistory(repo.rootUri.fsPath, relPath, startLine, Math.max(startLine, endLine)),
 			);
 		} catch (error) {
+			const issue = classifyLineHistoryIssue(error);
+			if (issue) {
+				void vscode.window.showWarningMessage(lineHistoryIssueMessage(issue, vscode.env.language));
+				return;
+			}
 			void vscode.window.showErrorMessage(`Could not load line history: ${error instanceof Error ? error.message : String(error)}`);
 			return;
 		}
 		const selectionRange = editor.selection.isEmpty
 			? editor.document.lineAt(editor.selection.active.line).range
 			: editor.selection;
-		this.lineHistoryPanel.show(repo, editor.document.uri, {
+		this.selectionHistoryPanel.show(repo, editor.document.uri, {
+			scope: 'selection',
 			relativePath: relPath,
 			startLine,
 			endLine: Math.max(startLine, endLine),
 			selectedText: editor.document.getText(selectionRange),
 			commits,
 		});
+	}
+
+	async showFileHistory(): Promise<void> {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor || editor.document.uri.scheme !== 'file') return;
+		const repo = this.api.getRepository(editor.document.uri);
+		if (!repo) {
+			void vscode.window.showInformationMessage('The active file is not in a Git repository.');
+			return;
+		}
+		const relPath = relPathFromRepoRoot(repo, editor.document.uri);
+		let commits;
+		try {
+			commits = await vscode.window.withProgress(
+				{ location: vscode.ProgressLocation.Window, title: `Loading file history for ${relPath}` },
+				() => readFileHistory(repo.rootUri.fsPath, relPath),
+			);
+		} catch (error) {
+			void vscode.window.showErrorMessage(`Could not load file history: ${error instanceof Error ? error.message : String(error)}`);
+			return;
+		}
+		this.fileHistoryPanel.show(repo, editor.document.uri, { scope: 'file', relativePath: relPath, commits });
 	}
 
 	async openCommitFromCommand(uriString: string, hash: string, parent?: string): Promise<void> {

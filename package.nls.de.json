@@ -7,5 +7,6 @@
   "view.commit": "Commit",
   "view.graph": "Graph",
   "command.toggleBlame": "GitVisual: Inline-Blame umschalten",
+  "command.fileHistory": "GitVisual: Dateiverlauf anzeigen",
   "command.lineHistory": "GitVisual: Verlauf der ausgewählten Zeilen anzeigen"
 }

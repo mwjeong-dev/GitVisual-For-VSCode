@@ -1,3 +1,6 @@
+import { parseUnifiedDiff } from '../diff/diffParser';
+import type { DiffHunk } from '../shared/protocol/diff';
+
 export interface BlameLine {
 	readonly hash: string;
 	readonly finalLine: number;
@@ -16,6 +19,7 @@ export interface LineHistoryCommit {
 	readonly authorMail: string;
 	readonly date: string;
 	readonly subject: string;
+	readonly hunks: readonly DiffHunk[];
 }
 
 const BLAME_HEADER = /^(\^?[0-9a-f]{40}|0{40}) (\d+) (\d+)(?: (\d+))?$/;
@@ -65,7 +69,10 @@ export function parseLineHistory(output: string): LineHistoryCommit[] {
 		.map((record) => record.trim())
 		.filter(Boolean)
 		.map((record) => {
-			const [hash, parents, author, authorMail, date, subject] = record.split(FIELD_SEP);
+			const [hash, parents, author, authorMail, date, subjectAndPatch = ''] = record.split(FIELD_SEP);
+			const patchStart = subjectAndPatch.indexOf('\n');
+			const subject = patchStart < 0 ? subjectAndPatch : subjectAndPatch.slice(0, patchStart);
+			const patch = patchStart < 0 ? '' : subjectAndPatch.slice(patchStart + 1);
 			return {
 				hash,
 				parents: parents ? parents.split(' ') : [],
@@ -73,6 +80,7 @@ export function parseLineHistory(output: string): LineHistoryCommit[] {
 				authorMail: authorMail ?? '',
 				date: date ?? '',
 				subject: subject ?? '',
+				hunks: parseUnifiedDiff(patch),
 			};
 		});
 }

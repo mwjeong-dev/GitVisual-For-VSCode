@@ -1,3 +1,5 @@
+import type { DiffHunk } from './diff';
+
 export interface LineHistoryCommitDto {
 	readonly hash: string;
 	readonly parents: readonly string[];
@@ -5,15 +7,26 @@ export interface LineHistoryCommitDto {
 	readonly authorMail: string;
 	readonly date: string;
 	readonly subject: string;
+	readonly hunks: readonly DiffHunk[];
 }
 
-export interface LineHistoryViewDto {
+interface HistoryViewBaseDto {
 	readonly relativePath: string;
+	readonly commits: readonly LineHistoryCommitDto[];
+}
+
+export interface SelectionHistoryViewDto extends HistoryViewBaseDto {
+	readonly scope: 'selection';
 	readonly startLine: number;
 	readonly endLine: number;
 	readonly selectedText: string;
-	readonly commits: readonly LineHistoryCommitDto[];
 }
+
+export interface FileHistoryViewDto extends HistoryViewBaseDto {
+	readonly scope: 'file';
+}
+
+export type LineHistoryViewDto = SelectionHistoryViewDto | FileHistoryViewDto;
 
 export type ExtensionToLineHistoryMessage =
 	| { readonly type: 'history'; readonly history: LineHistoryViewDto }
@@ -25,4 +38,3 @@ export type LineHistoryToExtensionMessage =
 	| { readonly type: 'ready' }
 	| { readonly type: 'selectCommit'; readonly hash: string; readonly parent?: string }
 	| { readonly type: 'openCommit'; readonly hash: string; readonly parent?: string };
-import type { DiffHunk } from './diff';

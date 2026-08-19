@@ -88,6 +88,11 @@
         "icon": "$(git-commit)"
       },
       {
+		"command": "gitTools.showFileHistory",
+		"title": "%command.fileHistory%",
+		"icon": "$(history)"
+	  },
+	  {
         "command": "gitTools.showLineHistory",
         "title": "%command.lineHistory%",
         "icon": "$(history)"
@@ -114,9 +119,14 @@
         }
       ],
       "editor/context": [
+		{
+		  "command": "gitTools.showFileHistory",
+		  "when": "resourceScheme == file",
+		  "group": "git@19"
+		},
         {
           "command": "gitTools.showLineHistory",
-          "when": "resourceScheme == file",
+          "when": "editorHasSelection && resourceScheme == file",
           "group": "git@20"
         }
       ]

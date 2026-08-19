@@ -17,10 +17,22 @@ export async function readLineHistory(
 	const format = `\x1e%H\x1f%P\x1f%an\x1f%ae\x1f%aI\x1f%s`;
 	const { stdout } = await spawnGit(repoRoot, [
 		'log',
-		'--no-patch',
+		'--no-ext-diff',
 		`--pretty=format:${format}`,
 		'-L',
 		`${startLine},${endLine}:${relPath}`,
+	]);
+	return parseLineHistory(stdout);
+}
+
+export async function readFileHistory(repoRoot: string, relPath: string): Promise<LineHistoryCommit[]> {
+	const format = `\x1e%H\x1f%P\x1f%an\x1f%ae\x1f%aI\x1f%s`;
+	const { stdout } = await spawnGit(repoRoot, [
+		'log',
+		'--no-patch',
+		`--pretty=format:${format}`,
+		'--',
+		relPath,
 	]);
 	return parseLineHistory(stdout);
 }

@@ -17,16 +17,21 @@ export class LineHistoryPanel implements vscode.Disposable {
 	private fileUri: vscode.Uri | undefined;
 	private history: LineHistoryViewDto | undefined;
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly api: API) {}
+	constructor(
+		private readonly extensionUri: vscode.Uri,
+		private readonly api: API,
+		private readonly openInNewWindow = false,
+	) {}
 
 	show(repository: Repository, fileUri: vscode.Uri, history: LineHistoryViewDto): void {
 		this.repository = repository;
 		this.fileUri = fileUri;
 		this.history = history;
+		const panelTitle = `${history.scope === 'file' ? 'File History' : 'Selection History'}: ${path.basename(fileUri.fsPath)}`;
 		if (!this.panel) {
-			this.panel = vscode.window.createWebviewPanel(
+			const panel = vscode.window.createWebviewPanel(
 				'gitTools.lineHistory',
-				`Line History: ${path.basename(fileUri.fsPath)}`,
+				panelTitle,
 				vscode.ViewColumn.Beside,
 				{
 					enableScripts: true,
@@ -34,11 +39,21 @@ export class LineHistoryPanel implements vscode.Disposable {
 					localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
 				},
 			);
-			this.panel.webview.html = this.getHtml(this.panel.webview);
-			this.panel.webview.onDidReceiveMessage((message: LineHistoryToExtensionMessage) => void this.handleMessage(message));
-			this.panel.onDidDispose(() => { this.panel = undefined; });
+			this.panel = panel;
+			panel.webview.html = this.getHtml(panel.webview);
+			panel.webview.onDidReceiveMessage((message: LineHistoryToExtensionMessage) => void this.handleMessage(message));
+			panel.onDidDispose(() => { this.panel = undefined; });
+			// A WebviewPanel cannot target a floating window directly. Once VS Code
+			// has activated the new editor, move that editor into its own window.
+			if (this.openInNewWindow) {
+				setTimeout(() => {
+					if (this.panel === panel && panel.active) {
+						void vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
+					}
+				}, 0);
+			}
 		} else {
-			this.panel.title = `Line History: ${path.basename(fileUri.fsPath)}`;
+			this.panel.title = panelTitle;
 			this.panel.reveal(vscode.ViewColumn.Beside);
 		}
 		this.post({ type: 'history', history });
@@ -72,9 +87,11 @@ export class LineHistoryPanel implements vscode.Disposable {
 			spawnGit(this.repository.rootUri.fsPath, ['show', `${parent}:${this.history.relativePath}`])
 				.then((result) => result.stdout)
 				.catch(() => ''),
-			spawnGit(this.repository.rootUri.fsPath, ['show', `${hash}:${this.history.relativePath}`]),
+			spawnGit(this.repository.rootUri.fsPath, ['show', `${hash}:${this.history.relativePath}`])
+				.then((result) => result.stdout)
+				.catch(() => ''),
 		]);
-		this.post({ type: 'commitDiff', hash, oldContent, content: content.stdout, hunks: parseUnifiedDiff(diff.stdout) });
+		this.post({ type: 'commitDiff', hash, oldContent, content, hunks: parseUnifiedDiff(diff.stdout) });
 	}
 
 	private async openCommit(hash: string, knownParent?: string): Promise<void> {
