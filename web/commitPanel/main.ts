@@ -89,12 +89,15 @@ style.textContent = `
 	.group-header .chevron svg { display: block; width: 16px; height: 16px; }
 	.group-header .chevron.collapsed svg { transform: rotate(-90deg); }
 	.group-files.collapsed { display: none; }
-	.file-list input[type="checkbox"] { appearance: none; -webkit-appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 14px; height: 14px; margin: 0; border: 1px solid var(--vscode-checkbox-border, var(--vscode-contrastBorder, #6b6b6b)); border-radius: 2px; background: var(--vscode-checkbox-background, var(--vscode-input-background)); cursor: pointer; }
-	.file-list input[type="checkbox"]::before { content: ''; width: 7px; height: 4px; border: solid var(--vscode-checkbox-foreground, var(--vscode-foreground)); border-width: 0 0 2px 2px; transform: rotate(-45deg) translate(1px, -1px) scale(0); transform-origin: center; }
-	.file-list input[type="checkbox"]:checked { border-color: var(--vscode-focusBorder); background: var(--vscode-checkbox-selectBackground, var(--vscode-focusBorder)); }
-	.file-list input[type="checkbox"]:checked::before { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
-	.file-list input[type="checkbox"]:indeterminate::before { width: 8px; height: 2px; border: 0; background: var(--vscode-checkbox-foreground, var(--vscode-foreground)); transform: scale(1); }
-	.file-list input[type="checkbox"]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+	input[type="checkbox"] { appearance: none; -webkit-appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 16px; height: 16px; margin: 0; border: 1px solid var(--vscode-checkbox-border, var(--vscode-contrastBorder, #6b6b6b)); border-radius: 2px; background: var(--vscode-checkbox-background, var(--vscode-input-background)); cursor: pointer; }
+	input[type="checkbox"]::before { content: ''; width: 8px; height: 4px; border: solid var(--vscode-checkbox-foreground, var(--vscode-foreground)); border-width: 0 0 2px 2px; transform: rotate(-45deg) translate(1px, -1px) scale(0); transform-origin: center; }
+	input[type="checkbox"]:hover { border-color: var(--vscode-focusBorder); }
+	input[type="checkbox"]:checked { border-color: var(--vscode-focusBorder); background: var(--vscode-checkbox-selectBackground, var(--vscode-focusBorder)); }
+	input[type="checkbox"]:checked::before { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
+	input[type="checkbox"]:indeterminate::before { width: 8px; height: 2px; border: 0; background: var(--vscode-checkbox-foreground, var(--vscode-foreground)); transform: scale(1); }
+	input[type="checkbox"]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+	input[type="checkbox"]:disabled { cursor: default; opacity: 0.5; }
+	.file-list input[type="checkbox"] { width: 14px; height: 14px; }
 	.group-header > input[type="checkbox"] { width: 15px; height: 15px; }
 	.group-header .group-label { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.group-header .group-label input { width: 100%; box-sizing: border-box; }
@@ -141,6 +144,10 @@ style.textContent = `
 	button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 8px; cursor: pointer; }
 	button:hover { background: var(--vscode-button-hoverBackground); }
 	.error-banner { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 4px 8px; }
+	.context-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; width: min(260px, calc(100vw - 12px)); padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 7px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, #252526); box-shadow: 0 5px 18px #0009; }
+	.context-item { padding: 5px 10px; border-radius: 4px; cursor: default; white-space: nowrap; font-size: 12px; }
+	.context-item:hover { color: var(--vscode-menu-selectionForeground); background: var(--vscode-menu-selectionBackground); }
+	.context-separator { height: 1px; margin: 4px 2px; background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border)); }
 `;
 document.head.appendChild(style);
 
@@ -355,12 +362,39 @@ function updateGroupCheckbox(fileContainer: HTMLElement): void {
 	groupCheckbox.indeterminate = checkedCount > 0 && checkedCount < fileCheckboxes.length;
 }
 
+function closeFileContextMenu(): void { document.querySelector('.context-menu')?.remove(); }
+
+function showFileContextMenu(x: number, y: number, file: ChangedFileDto): void {
+	closeFileContextMenu();
+	const menu = document.createElement('div'); menu.className = 'context-menu';
+	const item = (english: string, korean: string, action: () => void): void => {
+		const row = document.createElement('div'); row.className = 'context-item'; row.textContent = text(english, korean);
+		row.addEventListener('click', () => { closeFileContextMenu(); action(); }); menu.appendChild(row);
+	};
+	item('Open File', '파일 열기', () => post({ type: 'openFile', uri: file.uri }));
+	item('Copy Relative Path', '상대 경로 복사', () => post({ type: 'copyRelativePath', path: file.relPath }));
+	const separator = document.createElement('div'); separator.className = 'context-separator'; menu.appendChild(separator);
+	item('Reveal in File Explorer', '파일 탐색기에서 표시', () => post({ type: 'revealFileInOS', uri: file.uri }));
+	document.body.appendChild(menu);
+	const rect = menu.getBoundingClientRect();
+	menu.style.left = `${Math.max(4, Math.min(x, innerWidth - rect.width - 4))}px`;
+	menu.style.top = `${Math.max(4, Math.min(y, innerHeight - rect.height - 4))}px`;
+}
+
+document.addEventListener('pointerdown', (event) => {
+	const menu = document.querySelector('.context-menu');
+	if (menu && !menu.contains(event.target as Node)) closeFileContextMenu();
+}, true);
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeFileContextMenu(); });
+window.addEventListener('scroll', closeFileContextMenu, true);
+window.addEventListener('blur', closeFileContextMenu);
+
 function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElement {
 	const { name, dir } = splitPath(file.relPath);
 
 	const item = document.createElement('div');
 	item.className = 'file-item' + (file.uri === selectedFileUri ? ' selected' : '') + (file.isUntracked ? ' untracked' : '');
-	item.title = file.relPath;
+	item.title = `${file.relPath}\n${text('Right-click to reveal in File Explorer', '우클릭하여 파일 탐색기에서 위치 표시')}`;
 
 	const checkbox = document.createElement('input');
 	checkbox.type = 'checkbox';
@@ -419,6 +453,11 @@ function renderFileItem(file: ChangedFileDto, showMoveSelect: boolean): HTMLElem
 		selectedFileUri = file.uri;
 		renderFileList();
 		post({ type: 'openFileDiff', uri: file.uri });
+	});
+	item.addEventListener('contextmenu', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		showFileContextMenu(event.clientX, event.clientY, file);
 	});
 
 	return item;

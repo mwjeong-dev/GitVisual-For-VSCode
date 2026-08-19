@@ -16,16 +16,13 @@ export class EditorHistoryController implements vscode.Disposable {
 		after: { margin: '0 0 0 3em', color: new vscode.ThemeColor('editorCodeLens.foreground') },
 		isWholeLine: true,
 	});
-	private readonly selectionHistoryPanel: LineHistoryPanel;
-	private readonly fileHistoryPanel: LineHistoryPanel;
+	private readonly historyPanel: LineHistoryPanel;
 
 	constructor(private readonly api: API, extensionUri: vscode.Uri) {
-		this.selectionHistoryPanel = new LineHistoryPanel(extensionUri, api, true);
-		this.fileHistoryPanel = new LineHistoryPanel(extensionUri, api);
+		this.historyPanel = new LineHistoryPanel(extensionUri, api, true);
 		this.disposables.push(
 			this.decoration,
-			this.selectionHistoryPanel,
-			this.fileHistoryPanel,
+			this.historyPanel,
 			vscode.window.onDidChangeActiveTextEditor(() => void this.refresh()),
 			vscode.workspace.onDidSaveTextDocument((document) => {
 				if (document === vscode.window.activeTextEditor?.document) void this.refresh();
@@ -90,7 +87,7 @@ export class EditorHistoryController implements vscode.Disposable {
 		const selectionRange = editor.selection.isEmpty
 			? editor.document.lineAt(editor.selection.active.line).range
 			: editor.selection;
-		this.selectionHistoryPanel.show(repo, editor.document.uri, {
+		this.historyPanel.show(repo, editor.document.uri, {
 			scope: 'selection',
 			relativePath: relPath,
 			startLine,
@@ -119,7 +116,7 @@ export class EditorHistoryController implements vscode.Disposable {
 			void vscode.window.showErrorMessage(`Could not load file history: ${error instanceof Error ? error.message : String(error)}`);
 			return;
 		}
-		this.fileHistoryPanel.show(repo, editor.document.uri, { scope: 'file', relativePath: relPath, commits });
+		this.historyPanel.show(repo, editor.document.uri, { scope: 'file', relativePath: relPath, commits });
 	}
 
 	async openCommitFromCommand(uriString: string, hash: string, parent?: string): Promise<void> {

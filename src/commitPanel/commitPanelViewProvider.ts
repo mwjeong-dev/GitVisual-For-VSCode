@@ -99,6 +99,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 				case 'openFileDiff':
 					await this.openFileDiff(message.uri);
 					break;
+				case 'openFile':
+					await this.openFile(message.uri);
+					break;
+				case 'copyRelativePath':
+					await vscode.env.clipboard.writeText(message.path);
+					break;
+				case 'revealFileInOS':
+					await this.revealFileInOS(message.uri);
+					break;
 				case 'setSelection':
 					await this.applySelection(message.uri, message.selectedKeys);
 					break;
@@ -169,6 +178,28 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 		}
 		const left = this.api.toGitUri(uri, 'HEAD');
 		await vscode.commands.executeCommand('vscode.diff', left, uri, `${info.relPath} (Working Tree)`);
+	}
+
+	private async openFile(uriString: string): Promise<void> {
+		const uri = vscode.Uri.parse(uriString);
+		try {
+			await vscode.workspace.fs.stat(uri);
+			await vscode.window.showTextDocument(uri, { preview: true });
+		} catch {
+			void vscode.window.showInformationMessage('This file no longer exists in the working tree.');
+		}
+	}
+
+	private async revealFileInOS(uriString: string): Promise<void> {
+		const uri = vscode.Uri.parse(uriString);
+		let target = uri;
+		try {
+			await vscode.workspace.fs.stat(uri);
+		} catch {
+			// Deleted working-tree files cannot be selected in the OS explorer.
+			target = vscode.Uri.file(path.dirname(uri.fsPath));
+		}
+		await vscode.commands.executeCommand('revealFileInOS', target);
 	}
 
 	private async applySelection(uriString: string, selectedKeys: readonly string[]): Promise<void> {
