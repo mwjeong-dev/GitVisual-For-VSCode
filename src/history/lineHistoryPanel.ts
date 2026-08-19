@@ -32,7 +32,7 @@ export class LineHistoryPanel implements vscode.Disposable {
 			const panel = vscode.window.createWebviewPanel(
 				'gitTools.lineHistory',
 				panelTitle,
-				vscode.ViewColumn.Beside,
+				this.openInNewWindow ? vscode.ViewColumn.Active : vscode.ViewColumn.Beside,
 				{
 					enableScripts: true,
 					retainContextWhenHidden: true,
@@ -54,7 +54,9 @@ export class LineHistoryPanel implements vscode.Disposable {
 			}
 		} else {
 			this.panel.title = panelTitle;
-			this.panel.reveal(vscode.ViewColumn.Beside);
+			// Keep an existing panel in its current editor group/window. Passing a
+			// ViewColumn here would pull a floating editor back into the main window.
+			this.panel.reveal();
 		}
 		this.post({ type: 'history', history });
 	}

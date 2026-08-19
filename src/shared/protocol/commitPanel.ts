@@ -32,6 +32,9 @@ export type WebviewToExtensionMessage =
 	| { readonly type: 'ready' }
 	| { readonly type: 'selectFile'; readonly uri: string }
 	| { readonly type: 'openFileDiff'; readonly uri: string }
+	| { readonly type: 'openFile'; readonly uri: string }
+	| { readonly type: 'copyRelativePath'; readonly path: string }
+	| { readonly type: 'revealFileInOS'; readonly uri: string }
 	| { readonly type: 'setSelection'; readonly uri: string; readonly selectedKeys: string[] }
 	| { readonly type: 'commit'; readonly uris: string[]; readonly message: string; readonly amend: boolean }
 	| { readonly type: 'commitAndPush'; readonly uris: string[]; readonly message: string; readonly amend: boolean }
