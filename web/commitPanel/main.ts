@@ -27,8 +27,8 @@ let statusFilter = 'all';
 let selectedOnlyFilter = false;
 const selectedFileUris = new Set<string>();
 const knownFileUris = new Set<string>();
-const COMMIT_BOX_HEIGHT_KEY = 'gitvisual.commitPanel.commitBoxHeight';
-let commitBoxHeight = Number(localStorage.getItem(COMMIT_BOX_HEIGHT_KEY) ?? '270');
+const COMMIT_BOX_HEIGHT_KEY = 'gitvisual.commitPanel.commitBoxHeight.v2';
+let commitBoxHeight = Number(localStorage.getItem(COMMIT_BOX_HEIGHT_KEY) ?? '180');
 
 const root = document.getElementById('root')!;
 root.innerHTML = `
@@ -133,7 +133,7 @@ style.textContent = `
 	.commit-resizer::after { content: ''; position: absolute; inset: -3px 0; }
 	.commit-resizer:hover, .commit-resizer.dragging { background: var(--vscode-focusBorder); }
 	body.resizing-commit { cursor: row-resize; user-select: none; }
-	.commit-box { flex: 0 1 270px; min-height: 130px; display: flex; flex-direction: column; padding: 7px 12px 10px; gap: 7px; box-sizing: border-box; }
+	.commit-box { flex: 0 0 180px; min-height: 130px; display: flex; flex-direction: column; padding: 7px 12px 10px; gap: 7px; box-sizing: border-box; }
 	.commit-options { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 	.commit-options select { width: auto; border: 0; background: transparent; }
 	.commit-actions { flex: 0 0 auto; display: flex; gap: 10px; }
