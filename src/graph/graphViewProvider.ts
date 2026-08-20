@@ -8,6 +8,8 @@ import { spawnGit } from '../gitApi/spawnGit';
 import { createTranslator } from '../shared/localization';
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+const DETAILS_CACHE_LIMIT = 100;
+const PREFETCH_RADIUS = 10;
 
 export class GraphViewProvider implements vscode.WebviewViewProvider {
 	static readonly viewType = 'gitTools.graphView';
@@ -16,8 +18,10 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 	private commits: GraphCommitDto[] = [];
 	private readonly detailsCache = new Map<string, GraphCommitDetailsDto>();
 	private readonly detailsRequests = new Map<string, Promise<GraphCommitDetailsDto>>();
+	private cacheRepoRoot: string | undefined;
 	private selectedRef: string | undefined;
 	private loadGeneration = 0;
+	private prefetchGeneration = 0;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -38,6 +42,9 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		};
 		webviewView.webview.html = this.getHtml(webviewView.webview);
 		webviewView.webview.onDidReceiveMessage((message: GraphToExtensionMessage) => this.handleMessage(message));
+		webviewView.onDidChangeVisibility(() => {
+			if (!webviewView.visible) this.prefetchGeneration++;
+		});
 	}
 
 	async refresh(): Promise<void> {
@@ -56,13 +63,22 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
 	private async loadAndSend(): Promise<void> {
 		const generation = ++this.loadGeneration;
-		this.detailsCache.clear();
+		this.prefetchGeneration++;
 		const repo = this.repo;
 		if (!repo) {
+			this.cacheRepoRoot = undefined;
+			this.detailsCache.clear();
+			this.detailsRequests.clear();
 			this.commits = [];
 			this.post({ type: 'refs', refs: [] });
 			this.post({ type: 'commits', commits: [], emptyState: 'noRepository' });
 			return;
+		}
+		const repoRoot = repo.rootUri.fsPath;
+		if (this.cacheRepoRoot !== repoRoot) {
+			this.cacheRepoRoot = repoRoot;
+			this.detailsCache.clear();
+			this.detailsRequests.clear();
 		}
 		const maxCommits = vscode.workspace.getConfiguration('gitTools').get<number>('graph.maxCommits', 300);
 		try {
@@ -103,7 +119,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 					await this.runCommitAction(message.hash, message.action);
 					break;
 				case 'openFile':
-					await this.openFile(message.hash, vscode.Uri.parse(message.uri));
+					await this.openFile(message.hash, vscode.Uri.parse(message.uri), message.status);
 					break;
 			}
 		} catch (error) {
@@ -283,30 +299,56 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private async sendCommitDetails(hash: string): Promise<void> {
+		const prefetchGeneration = ++this.prefetchGeneration;
+		const details = await this.getOrLoadCommitDetails(hash, true);
+		if (prefetchGeneration !== this.prefetchGeneration) return;
+		this.post({ type: 'commitDetails', details });
+		void this.prefetchNearby(hash, prefetchGeneration);
+	}
+
+	private getCachedDetails(hash: string): GraphCommitDetailsDto | undefined {
 		const cached = this.detailsCache.get(hash);
-		if (cached) {
-			this.post({ type: 'commitDetails', details: cached });
-			return;
+		if (!cached) return undefined;
+		const graphCommit = this.commits.find((commit) => commit.hash === hash);
+		const details = graphCommit ? { ...cached, refs: graphCommit.refs } : cached;
+		this.detailsCache.delete(hash);
+		this.detailsCache.set(hash, details);
+		return details;
+	}
+
+	private cacheDetails(hash: string, details: GraphCommitDetailsDto): void {
+		this.detailsCache.delete(hash);
+		this.detailsCache.set(hash, details);
+		while (this.detailsCache.size > DETAILS_CACHE_LIMIT) {
+			const oldest = this.detailsCache.keys().next().value as string | undefined;
+			if (!oldest) break;
+			this.detailsCache.delete(oldest);
 		}
+	}
+
+	private getOrLoadCommitDetails(hash: string, postMetadata: boolean): Promise<GraphCommitDetailsDto> {
+		const cached = this.getCachedDetails(hash);
+		if (cached) return Promise.resolve(cached);
 		let request = this.detailsRequests.get(hash);
 		if (!request) {
-			request = this.loadCommitDetails(hash);
+			request = this.loadCommitDetails(hash, postMetadata);
 			this.detailsRequests.set(hash, request);
 			const cleanup = (): void => {
 				if (this.detailsRequests.get(hash) === request) this.detailsRequests.delete(hash);
 			};
 			void request.then(cleanup, cleanup);
 		}
-		this.post({ type: 'commitDetails', details: await request });
+		return request;
 	}
 
-	private async loadCommitDetails(hash: string): Promise<GraphCommitDetailsDto> {
+	private async loadCommitDetails(hash: string, postMetadata: boolean): Promise<GraphCommitDetailsDto> {
 		const repo = this.repo;
 		if (!repo) throw new Error(this.text('No Git repository is available.', '사용 가능한 Git 저장소가 없습니다.'));
+		const repoRoot = repo.rootUri.fsPath;
 		const graphCommit = this.commits.find((item) => item.hash === hash);
 		const baseRef = graphCommit?.parents[0] ?? EMPTY_TREE_SHA;
 		const commitPromise = repo.getCommit(hash);
-		const filesPromise = this.loadChangedFiles(repo.rootUri.fsPath, baseRef, hash);
+		const filesPromise = this.loadChangedFiles(repoRoot, baseRef, hash);
 		const commit = await commitPromise;
 		const metadata = {
 			hash,
@@ -317,19 +359,41 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 			message: commit.message,
 			refs: graphCommit?.refs ?? [],
 		};
-		this.post({ type: 'commitMetadata', metadata });
+		if (postMetadata) this.post({ type: 'commitMetadata', metadata });
 		const details: GraphCommitDetailsDto = { ...metadata, files: await filesPromise };
-		this.detailsCache.set(hash, details);
+		if (this.cacheRepoRoot === repoRoot) this.cacheDetails(hash, details);
 		return details;
 	}
 
-	private async openFile(hash: string, uri: vscode.Uri): Promise<void> {
+	private async prefetchNearby(hash: string, generation: number): Promise<void> {
+		if (!this.view?.visible || generation !== this.prefetchGeneration) return;
+		const selectedIndex = this.commits.findIndex((commit) => commit.hash === hash);
+		if (selectedIndex < 0) return;
+		const nearby: string[] = [];
+		for (let distance = 1; distance <= PREFETCH_RADIUS; distance++) {
+			const newer = this.commits[selectedIndex - distance];
+			const older = this.commits[selectedIndex + distance];
+			if (newer) nearby.push(newer.hash);
+			if (older) nearby.push(older.hash);
+		}
+		for (const nearbyHash of nearby) {
+			if (!this.view?.visible || generation !== this.prefetchGeneration) return;
+			try {
+				await this.getOrLoadCommitDetails(nearbyHash, false);
+			} catch {
+				// Prefetch is opportunistic; foreground selection still reports errors.
+			}
+		}
+	}
+
+	private async openFile(hash: string, uri: vscode.Uri, status: string): Promise<void> {
 		if (!this.repo) return;
 		const graphCommit = this.commits.find((commit) => commit.hash === hash);
-		const cachedDetails = this.detailsCache.get(hash);
+		const cachedDetails = this.getCachedDetails(hash);
 		const baseRef = graphCommit?.parents[0] ?? cachedDetails?.parents[0] ?? EMPTY_TREE_SHA;
-		const leftUri = this.api.toGitUri(uri, baseRef);
-		const rightUri = this.api.toGitUri(uri, hash);
+		const emptyUri = vscode.Uri.from({ scheme: 'gitvisual-empty', path: uri.path, query: hash });
+		const leftUri = status === 'Added' ? emptyUri : this.api.toGitUri(uri, baseRef);
+		const rightUri = status === 'Deleted' ? emptyUri : this.api.toGitUri(uri, hash);
 		await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${path.basename(uri.fsPath)} (${hash.slice(0, 7)})`);
 	}
 

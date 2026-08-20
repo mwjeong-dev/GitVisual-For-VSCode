@@ -178,8 +178,8 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 		if (node.unpublished) {
 			const unpublished = document.createElement('span');
 			unpublished.className = 'unpublished';
-			unpublished.textContent = text('Unpublished', '미게시');
-			unpublished.title = text(`Not published; compared with ${node.comparisonRef ?? 'the default remote branch'}`, `원격에 게시되지 않음 · ${node.comparisonRef ?? '원격 기본 브랜치'} 기준`);
+			unpublished.textContent = text('Local', '로컬');
+			unpublished.title = text(`No upstream branch; compared with ${node.comparisonRef ?? 'the default remote branch'}`, `업스트림 브랜치 없음 · ${node.comparisonRef ?? '원격 기본 브랜치'} 기준`);
 			sync.appendChild(unpublished);
 		}
 		if ((node.behind ?? 0) > 0) {

@@ -41,7 +41,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	);
 
 	const graphViewProvider = new GraphViewProvider(context.extensionUri, api);
-	context.subscriptions.push(vscode.window.registerWebviewViewProvider(GraphViewProvider.viewType, graphViewProvider));
+	context.subscriptions.push(
+		vscode.workspace.registerTextDocumentContentProvider('gitvisual-empty', {
+			provideTextDocumentContent: () => '',
+		}),
+		vscode.window.registerWebviewViewProvider(GraphViewProvider.viewType, graphViewProvider),
+	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('gitTools.refreshGraph', () => graphViewProvider.refresh()),
 		vscode.commands.registerCommand('gitTools.filterGraphBranch', (ref: string) => graphViewProvider.filterBranch(ref)),
