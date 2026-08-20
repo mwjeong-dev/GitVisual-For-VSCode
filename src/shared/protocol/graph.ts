@@ -41,4 +41,8 @@ export type GraphToExtensionMessage =
 	| { readonly type: 'filterBranch'; readonly ref?: string }
 	| { readonly type: 'selectCommit'; readonly hash: string }
 	| { readonly type: 'commitAction'; readonly hash: string; readonly action: 'copyHash' | 'createPatch' | 'cherryPick' | 'checkout' | 'compareHead' | 'reset' | 'revert' | 'deleteCommit' | 'editMessage' | 'fixup' | 'rebase' | 'newBranch' | 'newTag' }
+	| { readonly type: 'copyCommitHashes'; readonly hashes: string[] }
+	| { readonly type: 'copyCommitMessages'; readonly hashes: string[] }
+	| { readonly type: 'dropCommits'; readonly hashes: string[] }
+	| { readonly type: 'squashCommits'; readonly hashes: string[] }
 	| { readonly type: 'openFile'; readonly hash: string; readonly uri: string; readonly status: string };
