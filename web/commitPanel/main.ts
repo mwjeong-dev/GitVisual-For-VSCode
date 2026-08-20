@@ -80,7 +80,7 @@ style.textContent = `
 	.file-filter-bar .selected-only-filter[aria-pressed="true"] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 	.file-filter-bar .filter-summary { flex: 0 0 auto; color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
 	.file-filter-bar .filter-clear { width: 24px; padding: 0; font-size: 17px; }
-	.file-list { flex: 1 1 auto; min-height: 180px; overflow: auto; border-bottom: 1px solid var(--vscode-panel-border); }
+	.file-list { flex: 1 1 auto; min-height: 0; overflow: auto; border-bottom: 1px solid var(--vscode-panel-border); }
 	.file-list-empty { padding: 18px 12px; color: var(--vscode-descriptionForeground); text-align: center; }
 
 	.group-header { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 1px 10px; cursor: pointer; }
@@ -133,10 +133,10 @@ style.textContent = `
 	.commit-resizer::after { content: ''; position: absolute; inset: -3px 0; }
 	.commit-resizer:hover, .commit-resizer.dragging { background: var(--vscode-focusBorder); }
 	body.resizing-commit { cursor: row-resize; user-select: none; }
-	.commit-box { flex: 0 0 270px; display: flex; flex-direction: column; padding: 7px 12px 10px; gap: 7px; }
-	.commit-options { display: flex; align-items: center; gap: 8px; }
+	.commit-box { flex: 0 1 270px; min-height: 130px; display: flex; flex-direction: column; padding: 7px 12px 10px; gap: 7px; box-sizing: border-box; }
+	.commit-options { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 	.commit-options select { width: auto; border: 0; background: transparent; }
-	.commit-actions { display: flex; gap: 10px; }
+	.commit-actions { flex: 0 0 auto; display: flex; gap: 10px; }
 	.commit-actions button { min-width: 108px; }
 	.amend-row { display: flex; align-items: center; gap: 4px; font-size: 0.9em; cursor: pointer; }
 	textarea, select, input[type="text"], input[type="search"] { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: inherit; }
@@ -372,6 +372,7 @@ function showFileContextMenu(x: number, y: number, file: ChangedFileDto): void {
 		row.addEventListener('click', () => { closeFileContextMenu(); action(); }); menu.appendChild(row);
 	};
 	item('Open File', '파일 열기', () => post({ type: 'openFile', uri: file.uri }));
+	if (file.canRollback) item('Rollback…', '롤백…', () => post({ type: 'rollbackFile', uri: file.uri }));
 	item('Copy Relative Path', '상대 경로 복사', () => post({ type: 'copyRelativePath', path: file.relPath }));
 	const separator = document.createElement('div'); separator.className = 'context-separator'; menu.appendChild(separator);
 	item('Reveal in File Explorer', '파일 탐색기에서 표시', () => post({ type: 'revealFileInOS', uri: file.uri }));

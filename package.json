@@ -2,7 +2,7 @@
   "name": "gitvisual-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "mwjeong-dev",
   "preview": true,
   "license": "MIT",

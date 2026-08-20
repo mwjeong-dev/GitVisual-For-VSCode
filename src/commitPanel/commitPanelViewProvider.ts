@@ -108,6 +108,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 				case 'revealFileInOS':
 					await this.revealFileInOS(message.uri);
 					break;
+				case 'rollbackFile':
+					await this.rollbackFile(message.uri);
+					break;
 				case 'setSelection':
 					await this.applySelection(message.uri, message.selectedKeys);
 					break;
@@ -200,6 +203,30 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 			target = vscode.Uri.file(path.dirname(uri.fsPath));
 		}
 		await vscode.commands.executeCommand('revealFileInOS', target);
+	}
+
+	private async rollbackFile(uriString: string): Promise<void> {
+		const repo = this.repo;
+		if (!repo) return;
+		const info = listChangedFiles(repo, this.changelistStore).find((file) => file.uri === uriString);
+		if (!info?.canRollback) return;
+		const korean = vscode.env.language.toLowerCase().startsWith('ko');
+		const action = korean ? '롤백' : 'Rollback';
+		const confirmed = await vscode.window.showWarningMessage(
+			korean
+				? `${info.relPath}의 작업 트리 변경을 롤백할까요? Stage된 변경은 유지되며, 롤백한 내용은 실행 취소할 수 없습니다.`
+				: `Rollback working-tree changes in ${info.relPath}? Staged changes are preserved, and the rollback cannot be undone.`,
+			{ modal: true },
+			action,
+		);
+		if (confirmed !== action) return;
+		const uri = vscode.Uri.parse(uriString);
+		const relativePath = path.relative(repo.rootUri.fsPath, uri.fsPath).replace(/\\/g, '/');
+		await spawnGit(repo.rootUri.fsPath, ['restore', '--worktree', '--', relativePath]);
+		this.fileStateByUri.delete(uriString);
+		this.partiallySelectedUris.delete(uriString);
+		await repo.status();
+		await this.sendFileList();
 	}
 
 	private async applySelection(uriString: string, selectedKeys: readonly string[]): Promise<void> {

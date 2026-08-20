@@ -375,7 +375,7 @@ function renderFileTree(parent: HTMLElement | DocumentFragment, node: FileTreeNo
 		const path = document.createElement('span'); path.className = 'file-path'; path.textContent = name;
 		const status = document.createElement('span'); status.className = 'file-status'; status.textContent = file.status.slice(0, 1);
 		row.append(chevronSpace, iconSpace, path, status);
-		row.addEventListener('click', () => post({ type: 'openFile', hash: details.hash, uri: file.uri }));
+		row.addEventListener('click', () => post({ type: 'openFile', hash: details.hash, uri: file.uri, status: file.status }));
 		parent.appendChild(row);
 	}
 }

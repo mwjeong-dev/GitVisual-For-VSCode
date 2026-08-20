@@ -8,6 +8,8 @@ export interface ChangedFileDto {
 	readonly isUntracked: boolean;
 	/** Whether the file has any staged content (coarse — doesn't distinguish partial from full). */
 	readonly isStaged: boolean;
+	/** Whether a tracked, non-conflicted working-tree change can be restored from the index. */
+	readonly canRollback: boolean;
 	/** Owning changelist — meaningless for untracked files, which always render under "Unversioned Files". */
 	readonly changelistId: string;
 }
@@ -35,6 +37,7 @@ export type WebviewToExtensionMessage =
 	| { readonly type: 'openFile'; readonly uri: string }
 	| { readonly type: 'copyRelativePath'; readonly path: string }
 	| { readonly type: 'revealFileInOS'; readonly uri: string }
+	| { readonly type: 'rollbackFile'; readonly uri: string }
 	| { readonly type: 'setSelection'; readonly uri: string; readonly selectedKeys: string[] }
 	| { readonly type: 'commit'; readonly uris: string[]; readonly message: string; readonly amend: boolean }
 	| { readonly type: 'commitAndPush'; readonly uris: string[]; readonly message: string; readonly amend: boolean }

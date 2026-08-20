@@ -75,6 +75,7 @@ style.textContent = `
 	.row .sync-counts { display: inline-flex; flex: 0 0 auto; gap: 6px; margin-left: 2px; font-size: 12px; font-weight: 600; }
 	.row .sync-counts .behind { color: #4da3ff; }
 	.row .sync-counts .ahead { color: var(--vscode-gitDecoration-addedResourceForeground, #55b56a); }
+	.row .sync-counts .unpublished { color: var(--vscode-descriptionForeground); font-weight: 500; }
 	.row .checkout { display: none; margin-left: auto; padding: 1px 6px; }
 	.row:hover .checkout, .row:focus-within .checkout { display: inline-block; }
 	.error-banner { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 4px 8px; }
@@ -113,6 +114,8 @@ interface TreeNode {
 	kind?: BranchTreeItemDto['kind'];
 	ahead?: number;
 	behind?: number;
+	unpublished?: boolean;
+	comparisonRef?: string;
 	readonly children: Map<string, TreeNode>;
 }
 
@@ -132,6 +135,8 @@ function insert(sectionRoot: TreeNode, branch: BranchTreeItemDto): void {
 			node.kind = branch.kind;
 			node.ahead = branch.ahead;
 			node.behind = branch.behind;
+			node.unpublished = branch.unpublished;
+			node.comparisonRef = branch.comparisonRef;
 		}
 	});
 }
@@ -167,9 +172,16 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 	name.className = 'name';
 	name.textContent = node.name;
 	row.appendChild(name);
-	if (isLeaf && ((node.behind ?? 0) > 0 || (node.ahead ?? 0) > 0)) {
+	if (isLeaf && ((node.behind ?? 0) > 0 || (node.ahead ?? 0) > 0 || node.unpublished)) {
 		const sync = document.createElement('span');
 		sync.className = 'sync-counts';
+		if (node.unpublished) {
+			const unpublished = document.createElement('span');
+			unpublished.className = 'unpublished';
+			unpublished.textContent = text('Local', '로컬');
+			unpublished.title = text(`No upstream branch; compared with ${node.comparisonRef ?? 'the default remote branch'}`, `업스트림 브랜치 없음 · ${node.comparisonRef ?? '원격 기본 브랜치'} 기준`);
+			sync.appendChild(unpublished);
+		}
 		if ((node.behind ?? 0) > 0) {
 			const behind = document.createElement('span');
 			behind.className = 'behind';
@@ -181,7 +193,9 @@ function renderNode(node: TreeNode, path: string, depth: number, container: HTML
 			const ahead = document.createElement('span');
 			ahead.className = 'ahead';
 			ahead.textContent = `↗ ${node.ahead}`;
-			ahead.title = text(`${node.ahead} commits to push`, `Push할 커밋 ${node.ahead}개`);
+			ahead.title = node.unpublished
+				? text(`${node.ahead} outgoing commits relative to ${node.comparisonRef}`, `${node.comparisonRef} 기준 Outgoing 커밋 ${node.ahead}개`)
+				: text(`${node.ahead} commits to push`, `Push할 커밋 ${node.ahead}개`);
 			sync.appendChild(ahead);
 		}
 		row.appendChild(sync);

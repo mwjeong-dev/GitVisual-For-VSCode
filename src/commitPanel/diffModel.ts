@@ -9,6 +9,7 @@ import type { ChangelistStore } from '../scm/changelistStore';
 function toDto(
 	change: Change,
 	stagedUris: ReadonlySet<string>,
+	rollbackUris: ReadonlySet<string>,
 	changelistStore: ChangelistStore,
 ): ChangedFileDto {
 	const uri = change.uri.toString();
@@ -18,6 +19,7 @@ function toDto(
 		statusLabel: statusLabel(change.status),
 		isUntracked: isUntrackedStatus(change.status),
 		isStaged: stagedUris.has(uri),
+		canRollback: rollbackUris.has(uri),
 		changelistId: (changelistStore.findByFileUri(uri) ?? changelistStore.getDefault()).id,
 	};
 }
@@ -26,9 +28,16 @@ function toDto(
 export function listChangedFiles(repo: Repository, changelistStore: ChangelistStore): ChangedFileDto[] {
 	const { workingTreeChanges, indexChanges, untrackedChanges, mergeChanges } = repo.state;
 	const stagedUris = new Set(indexChanges.map((change) => change.uri.toString()));
+	const conflictedUris = new Set(mergeChanges.map((change) => change.uri.toString()));
+	const untrackedUris = new Set(untrackedChanges.map((change) => change.uri.toString()));
+	const rollbackUris = new Set(
+		workingTreeChanges
+			.map((change) => change.uri.toString())
+			.filter((uri) => !conflictedUris.has(uri) && !untrackedUris.has(uri)),
+	);
 	const byUri = new Map<string, ChangedFileDto>();
 	for (const change of [...mergeChanges, ...indexChanges, ...workingTreeChanges, ...untrackedChanges]) {
-		byUri.set(change.uri.toString(), toDto(change, stagedUris, changelistStore));
+		byUri.set(change.uri.toString(), toDto(change, stagedUris, rollbackUris, changelistStore));
 	}
 	return [...byUri.values()].sort((a, b) => a.relPath.localeCompare(b.relPath));
 }
