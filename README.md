@@ -2,6 +2,8 @@
 
 GitVisual is a visual Git workspace for Visual Studio Code. Organize local changes into changelists, select exactly what to commit, explore branches, inspect commit history, and review blame information without leaving the editor.
 
+![GitVisual overview showing selective commits, branch management, diffs, and the commit graph](media/gitvisual-overview.png)
+
 > [!WARNING]
 > GitVisual is currently in Preview. Selective commits use an isolated scratch index. Keep important work backed up and report unexpected Git behavior through [GitHub Issues](https://github.com/mwjeong-dev/vscode_git_tools/issues).
 
@@ -12,9 +14,9 @@ GitVisual is a visual Git workspace for Visual Studio Code. Organize local chang
 - Selective commits built through an isolated scratch index
 - Line-level selection for tracked files
 - Separate Unversioned Files group based on the actual Git status
-- Local, remote, and tag explorer with checkout and management actions
-- Interactive commit graph with branch filtering and commit details
-- Inline blame and selected-line history
+- Local, remote, and tag explorer with Incoming, Outgoing, checkout, and management actions
+- Fast interactive commit graph with branch filtering, commit details, and nearby-history prefetching
+- Inline blame plus file and selection history in a resizable auxiliary window
 - Commit, amend, commit-and-push, patch, branch, and tag workflows
 - English, Korean, Japanese, Simplified Chinese, Traditional Chinese, Spanish, German, French, and Brazilian Portuguese UI
 
@@ -33,6 +35,8 @@ You can:
 - Commit all selected changes or only the selected files in one changelist
 - Amend the latest commit
 - Commit and push in one action
+- Resize the commit-message area while keeping commit actions visible
+- Open files, copy relative paths, reveal files in the OS explorer, or safely roll back eligible working-tree changes from the file menu
 
 ## Branch Explorer
 
@@ -42,6 +46,8 @@ The GitVisual Activity Bar view organizes references into Local, Remote, and Tag
 - Checkout local branches, remote branches, tags, or revisions
 - Create branches and tags from a selected reference
 - Push and update branches
+- See Incoming and Outgoing counts, including branches that exist only locally
+- Automatically fetch remote updates at a configurable interval
 - Delete local branches, remote branches, and tags with confirmation
 - Double-click a reference to filter the commit graph
 
@@ -52,9 +58,9 @@ The bottom-panel GitVisual view renders a visual history from `git log --all --t
 - Colored branch and merge lanes
 - Search by message, author, reference, or hash
 - Filter history by branch
-- View commit metadata and changed files
+- View commit metadata and changed files with session caching and nearby-commit prefetching
 - Resize the changed-files and commit-details panes
-- Open file diffs for a commit
+- Open file diffs for modified, added, and deleted files
 - Copy hashes, create commit patches, cherry-pick, checkout, compare, reset, revert, fix up, rebase, and create branches or tags
 
 ## Blame and Line History
@@ -63,7 +69,11 @@ The bottom-panel GitVisual view renders a visual history from `git log --all --t
 - Inspect author, date, hash, and summary in blame hovers
 - Open the related commit or previous revision
 - Run `GitVisual: Show File History` to browse every commit for the current file and preview its full-file diff
-- Select lines and run `GitVisual: Show Line Range History` to inspect only the relevant range changes in a side-by-side history panel; open the full file diff only when needed
+- Select lines and run `GitVisual: Show History for Selection` to inspect only the relevant range changes
+- Open file and selection history in the same resizable auxiliary window
+- Switch selection history between side-by-side and stacked layouts with synchronized scrolling
+
+![GitVisual file history with a side-by-side diff and commit list](media/gitvisual-file-history.png)
 
 ## Safety
 
@@ -107,7 +117,7 @@ Marketplace metadata, command names, views, webviews, and supported native dialo
 Install GitVisual from the Visual Studio Marketplace, or install a downloaded VSIX with:
 
 ```bash
-code --install-extension gitvisual-vscode-0.1.2.vsix
+code --install-extension gitvisual-vscode-0.2.6.vsix
 ```
 
 You can also run **Extensions: Install from VSIX...** from the Command Palette.
@@ -117,6 +127,8 @@ You can also run **Extensions: Install from VSIX...** from the Command Palette.
 | Setting | Default | Description |
 |---|---:|---|
 | `gitTools.graph.maxCommits` | `300` | Maximum number of commits loaded into the graph. |
+| `gitTools.fetch.auto` | `true` | Automatically fetch remote changes in the background and while the Branches view is visible. |
+| `gitTools.fetch.intervalMinutes` | `20` | Automatic Fetch interval in minutes. |
 
 The internal `gitTools.*` setting and command identifiers are retained for compatibility.
 
@@ -131,26 +143,6 @@ Please use [GitHub Issues](https://github.com/mwjeong-dev/vscode_git_tools/issue
 - A sanitized sample repository when possible
 
 Prefix possible data-loss, index-corruption, or unsafe-commit reports with `[Safety]`. GitVisual does not collect telemetry or usage analytics.
-
-## Development
-
-Requirements: Node.js 18+, npm, Git, and VS Code.
-
-```bash
-npm install
-npm run watch
-```
-
-Press `F5` to open an Extension Development Host. Reload that window with `Ctrl+R` after source changes.
-
-Validation and packaging commands:
-
-```bash
-npm run typecheck
-npm run test:unit
-npm run build
-npx @vscode/vsce package
-```
 
 ## License
 
