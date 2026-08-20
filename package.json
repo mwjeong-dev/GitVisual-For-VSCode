@@ -2,7 +2,7 @@
   "name": "gitvisual-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "mwjeong-dev",
   "preview": true,
   "license": "MIT",
@@ -88,11 +88,11 @@
         "icon": "$(git-commit)"
       },
       {
-		"command": "gitTools.showFileHistory",
-		"title": "%command.fileHistory%",
-		"icon": "$(history)"
-	  },
-	  {
+        "command": "gitTools.showFileHistory",
+        "title": "%command.fileHistory%",
+        "icon": "$(history)"
+      },
+      {
         "command": "gitTools.showLineHistory",
         "title": "%command.lineHistory%",
         "icon": "$(history)"
@@ -119,11 +119,11 @@
         }
       ],
       "editor/context": [
-		{
-		  "command": "gitTools.showFileHistory",
-		  "when": "resourceScheme == file",
-		  "group": "git@19"
-		},
+        {
+          "command": "gitTools.showFileHistory",
+          "when": "resourceScheme == file",
+          "group": "git@19"
+        },
         {
           "command": "gitTools.showLineHistory",
           "when": "editorHasSelection && resourceScheme == file",
@@ -159,11 +159,13 @@
     "build": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./web/tsconfig.json",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.86.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.0"

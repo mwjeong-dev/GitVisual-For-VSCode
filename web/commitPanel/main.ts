@@ -167,7 +167,10 @@ const commitBoxEl = document.getElementById('commit-box') as HTMLElement;
 const commitResizerEl = document.getElementById('commit-resizer') as HTMLElement;
 
 function applyCommitBoxHeight(height: number): void {
-	const maxHeight = Math.max(130, window.innerHeight - 140);
+	// Keep only the fixed toolbar, filter bar, and resize handle above the
+	// commit area. The file list may shrink to zero when the user explicitly
+	// expands the message editor.
+	const maxHeight = Math.max(130, window.innerHeight - 77);
 	commitBoxHeight = Math.min(maxHeight, Math.max(130, height));
 	commitBoxEl.style.flexBasis = `${commitBoxHeight}px`;
 }
