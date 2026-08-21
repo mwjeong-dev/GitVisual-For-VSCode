@@ -15,6 +15,7 @@ const text = createTranslator(navigator.language);
 
 let commits: GraphCommitDto[] = [];
 let selectedHash: string | undefined;
+const selectedHashes = new Set<string>();
 let selectedRef: string | undefined;
 let refs: string[] = [];
 const DETAILS_SPLIT_KEY = 'gitvisual.graph.detailsSplit';
@@ -29,6 +30,7 @@ root.innerHTML = `
 			<div class="toolbar">
 				<div class="search-wrap"><span>⌕</span><input id="search" placeholder="${text('Search commits, authors, refs, or hashes', '커밋, 작성자, 브랜치 또는 해시 검색')}"></div>
 				<div class="branch-filter" id="branch-filter"><button id="branch-button"></button><button id="clear-branch" title="${text('Clear branch filter', '브랜치 필터 해제')}">×</button><div class="branch-menu" id="branch-menu"></div></div>
+				<button id="squash-selected" class="squash-selected"></button>
 				<button id="refresh" title="Refresh">↻</button>
 			</div>
 			<div class="column-head"><span>${text('Commit', '커밋')}</span><span>${text('Author', '작성자')}</span><span>${text('Date', '날짜')}</span></div>
@@ -71,6 +73,8 @@ style.textContent = `
 	.branch-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 	.branch-option-check { color: var(--vscode-textLink-foreground); text-align: center; }
 	.toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
+	.toolbar .squash-selected { display: none; margin-left: 0; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+	.toolbar .squash-selected.visible { display: inline-block; }
 	.column-head { display: grid; grid-template-columns: minmax(240px, 1fr) 145px 130px; padding: 4px 12px 4px 54px; opacity: .65; font-size: 11px; border-bottom: 1px solid var(--vscode-panel-border); }
 	.graph-container { position: relative; flex: 1 1 0; width: 100%; min-height: 0; overflow-x: auto; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable; }
 	.graph-container svg { position: absolute; top: 0; left: 8px; pointer-events: none; }
@@ -78,6 +82,7 @@ style.textContent = `
 	.graph-row { display: grid; grid-template-columns: minmax(240px, 1fr) 145px 130px; align-items: center; white-space: nowrap; cursor: default; padding-right: 12px; border-bottom: 1px solid transparent; }
 	.graph-row:hover { background: var(--vscode-list-hoverBackground); }
 	.graph-row.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+	.graph-row.multi-selected { color: var(--vscode-list-inactiveSelectionForeground); background: var(--vscode-list-inactiveSelectionBackground); }
 	.commit-cell { min-width: 0; display: flex; align-items: center; gap: 7px; overflow: hidden; }
 	.subject { min-width: 40px; overflow: hidden; text-overflow: ellipsis; }
 	.ref-badge { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; padding: 1px 5px; border: 1px solid var(--vscode-gitDecoration-addedResourceForeground); border-radius: 9px; color: var(--vscode-gitDecoration-addedResourceForeground); }
@@ -119,7 +124,8 @@ style.textContent = `
 	.file-status { flex: 0 0 auto; margin-left: auto; font-weight: 700; color: var(--vscode-gitDecoration-modifiedResourceForeground); }
 	.file-list-empty { padding: 18px 14px; color: var(--vscode-descriptionForeground); text-align: center; }
 	.error-banner { position: absolute; z-index: 5; left: 8px; right: 8px; padding: 6px 10px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); }
-	.context-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; width: min(350px, calc(100vw - 12px)); padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 7px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, #252526); box-shadow: 0 5px 18px #0009; }
+	.context-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; width: min(350px, calc(100vw - 12px)); max-height: calc(100vh - 8px); overflow-x: hidden; overflow-y: auto; padding: 5px; border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); border-radius: 7px; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, #252526); box-shadow: 0 5px 18px #0009; }
+	.context-menu > * { flex: 0 0 auto; }
 	.context-title { padding: 3px 9px 2px; color: var(--vscode-descriptionForeground); font-size: 10px; font-weight: 600; text-transform: uppercase; }
 	.context-item { padding: 4px 10px; border-radius: 4px; cursor: default; white-space: nowrap; font-size: 12px; line-height: 1.25; }
 	.context-item:hover { color: var(--vscode-menu-selectionForeground); background: var(--vscode-menu-selectionBackground); }
@@ -136,6 +142,7 @@ const branchFilterEl = document.getElementById('branch-filter')!;
 const branchButtonEl = document.getElementById('branch-button') as HTMLButtonElement;
 const clearBranchEl = document.getElementById('clear-branch') as HTMLButtonElement;
 const branchMenuEl = document.getElementById('branch-menu')!;
+const squashSelectedEl = document.getElementById('squash-selected') as HTMLButtonElement;
 
 // Chromium normally scrolls this element natively. Explicit handling keeps
 // wheel scrolling reliable inside a VS Code webview when the graph is wider
@@ -158,10 +165,11 @@ containerEl.addEventListener('wheel', (event) => {
 }, { passive: false });
 
 document.getElementById('refresh')!.addEventListener('click', () => post({ type: 'refresh' }));
+squashSelectedEl.addEventListener('click', () => post({ type: 'squashCommits', hashes: [...selectedHashes] }));
 searchEl.addEventListener('input', renderRows);
 branchButtonEl.addEventListener('click', (event) => { event.stopPropagation(); branchMenuEl.classList.toggle('open'); });
 clearBranchEl.addEventListener('click', (event) => {
-	event.stopPropagation(); selectedRef = undefined; selectedHash = undefined; branchMenuEl.classList.remove('open'); renderBranchFilter(); post({ type: 'filterBranch' });
+	event.stopPropagation(); selectedRef = undefined; selectedHash = undefined; selectedHashes.clear(); branchMenuEl.classList.remove('open'); renderBranchFilter(); post({ type: 'filterBranch' });
 });
 window.addEventListener('click', () => branchMenuEl.classList.remove('open'));
 
@@ -184,7 +192,7 @@ function renderBranchFilter(): void {
 		const optionLabel = document.createElement('span'); optionLabel.className = 'branch-option-label'; optionLabel.textContent = label;
 		const check = document.createElement('span'); check.className = 'branch-option-check'; check.textContent = selectedRef === ref ? '✓' : '';
 		option.append(icon, optionLabel, check);
-		option.addEventListener('click', () => { selectedRef = ref; selectedHash = undefined; renderBranchFilter(); post({ type: 'filterBranch', ref }); });
+		option.addEventListener('click', () => { selectedRef = ref; selectedHash = undefined; selectedHashes.clear(); renderBranchFilter(); post({ type: 'filterBranch', ref }); });
 		branchMenuEl.appendChild(option);
 	};
 	add(text('All branches', '전체 브랜치'));
@@ -243,6 +251,8 @@ function showDetailsLoading(metadata: GraphCommitMetadataDto): void {
 }
 
 function renderRows(): void {
+	squashSelectedEl.classList.toggle('visible', selectedHashes.size > 1);
+	squashSelectedEl.textContent = text(`Squash ${selectedHashes.size} commits…`, `커밋 ${selectedHashes.size}개 스쿼시…`);
 	containerEl.querySelector('svg')?.remove();
 	const layout = layoutCommits(matchingCommits());
 	const svg = renderGraphSvg(layout, branchColorOffset(selectedRef));
@@ -252,7 +262,7 @@ function renderRows(): void {
 	rowsEl.innerHTML = '';
 	for (const node of layout.nodes) {
 		const row = document.createElement('div');
-		row.className = `graph-row${node.hash === selectedHash ? ' selected' : ''}`;
+		row.className = `graph-row${selectedHashes.has(node.hash) && node.hash === selectedHash ? ' selected' : ''}${selectedHashes.has(node.hash) && node.hash !== selectedHash ? ' multi-selected' : ''}`;
 		row.style.height = `${ROW_HEIGHT}px`;
 		const commitCell = document.createElement('div');
 		commitCell.className = 'commit-cell';
@@ -274,8 +284,20 @@ function renderRows(): void {
 		const date = document.createElement('span'); date.className = 'date'; date.textContent = formatDate(node.date);
 		row.append(commitCell, author, date);
 		row.title = `${node.hash}\n${node.subject}\n${node.authorName} · ${node.date}`;
-		row.addEventListener('click', () => { selectedHash = node.hash; renderRows(); showDetailsLoading(metadataFromCommit(node)); post({ type: 'selectCommit', hash: node.hash }); });
-		row.addEventListener('contextmenu', (event) => { event.preventDefault(); selectedHash = node.hash; renderRows(); showCommitMenu(event.clientX, event.clientY, node.hash); });
+		row.addEventListener('click', (event) => {
+			if (event.ctrlKey || event.metaKey) {
+				if (selectedHashes.has(node.hash)) selectedHashes.delete(node.hash); else selectedHashes.add(node.hash);
+				selectedHash = node.hash;
+			} else {
+				selectedHashes.clear(); selectedHashes.add(node.hash); selectedHash = node.hash;
+			}
+			renderRows(); showDetailsLoading(metadataFromCommit(node)); post({ type: 'selectCommit', hash: node.hash });
+		});
+		row.addEventListener('contextmenu', (event) => {
+			event.preventDefault();
+			if (!selectedHashes.has(node.hash)) { selectedHashes.clear(); selectedHashes.add(node.hash); }
+			selectedHash = node.hash; renderRows(); showCommitMenu(event.clientX, event.clientY, node.hash);
+		});
 		rowsEl.appendChild(row);
 	}
 }
@@ -290,6 +312,21 @@ function showCommitMenu(x: number, y: number, hash: string): void {
 	};
 	const title = (english: string, korean: string): void => { const heading = document.createElement('div'); heading.className = 'context-title'; heading.textContent = text(english, korean); menu.appendChild(heading); };
 	const separator = (): void => { const line = document.createElement('div'); line.className = 'context-separator'; menu.appendChild(line); };
+	if (selectedHashes.size > 1) {
+		title(`${selectedHashes.size} Selected Commits`, `선택한 커밋 ${selectedHashes.size}개`);
+		const multiItem = (english: string, korean: string, run: () => void): void => {
+			const row = document.createElement('div'); row.className = 'context-item'; row.textContent = text(english, korean);
+			row.addEventListener('click', () => { closeCommitMenu(); run(); }); menu.appendChild(row);
+		};
+		multiItem('Squash Selected Commits…', '선택한 커밋 스쿼시…', () => post({ type: 'squashCommits', hashes: [...selectedHashes] }));
+		multiItem('Drop Selected Commits…', '선택한 커밋 삭제…', () => post({ type: 'dropCommits', hashes: [...selectedHashes] }));
+		separator();
+		multiItem('Copy Revision Numbers', '리비전 번호 복사', () => post({ type: 'copyCommitHashes', hashes: [...selectedHashes] }));
+		multiItem('Copy Commit Messages', '커밋 메시지 복사', () => post({ type: 'copyCommitMessages', hashes: [...selectedHashes] }));
+		document.body.appendChild(menu);
+		positionCommitMenu(menu, x, y);
+		return;
+	}
 	title('Revision', '리비전');
 	item('Copy Revision Number', '리비전 번호 복사', 'copyHash');
 	item('Create Patch…', '패치 생성…', 'createPatch');
@@ -311,6 +348,9 @@ function showCommitMenu(x: number, y: number, hash: string): void {
 	item('New Branch…', '새 브랜치…', 'newBranch');
 	item('New Tag…', '새 태그…', 'newTag');
 	document.body.appendChild(menu);
+	positionCommitMenu(menu, x, y);
+}
+function positionCommitMenu(menu: HTMLElement, x: number, y: number): void {
 	const rect = menu.getBoundingClientRect();
 	menu.style.left = `${Math.max(4, Math.min(x, innerWidth - rect.width - 4))}px`;
 	menu.style.top = `${Math.max(4, Math.min(y, innerHeight - rect.height - 4))}px`;
@@ -468,7 +508,11 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToGraphMessage>
 		selectedRef = message.ref;
 		renderBranchFilter();
 		commits = message.commits;
+		for (const hash of selectedHashes) {
+			if (!commits.some((commit) => commit.hash === hash)) selectedHashes.delete(hash);
+		}
 		if (!selectedHash || !commits.some((commit) => commit.hash === selectedHash)) selectedHash = commits[0]?.hash;
+		if (selectedHash && selectedHashes.size === 0) selectedHashes.add(selectedHash);
 		renderRows();
 		if (commits.length === 0) {
 			detailsEl.innerHTML = '';
@@ -488,6 +532,8 @@ window.addEventListener('message', (event: MessageEvent<ExtensionToGraphMessage>
 		}
 	} else if (message.type === 'selectCommitAfterRewrite') {
 		selectedHash = message.hash;
+		selectedHashes.clear();
+		selectedHashes.add(message.hash);
 	} else if (message.type === 'commitMetadata' && message.metadata.hash === selectedHash) {
 		showDetailsLoading(message.metadata);
 	} else if (message.type === 'commitDetails' && message.details.hash === selectedHash) {

@@ -118,6 +118,25 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 				case 'commitAction':
 					await this.runCommitAction(message.hash, message.action);
 					break;
+				case 'copyCommitHashes':
+					await vscode.env.clipboard.writeText(message.hashes.join('\n'));
+					break;
+				case 'copyCommitMessages': {
+					const selected = new Set(message.hashes);
+					const subjects = this.commits.filter((commit) => selected.has(commit.hash)).map((commit) => commit.subject);
+					await vscode.env.clipboard.writeText(subjects.join('\n'));
+					break;
+				}
+				case 'dropCommits':
+					await this.dropCommits(message.hashes);
+					await this.repo?.status();
+					await this.loadAndSend();
+					break;
+				case 'squashCommits':
+					await this.squashCommits(message.hashes);
+					await this.repo?.status();
+					await this.loadAndSend();
+					break;
 				case 'openFile':
 					await this.openFile(message.hash, vscode.Uri.parse(message.uri), message.status);
 					break;
@@ -304,6 +323,104 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 		if (prefetchGeneration !== this.prefetchGeneration) return;
 		this.post({ type: 'commitDetails', details });
 		void this.prefetchNearby(hash, prefetchGeneration);
+	}
+
+	private async squashCommits(hashes: string[]): Promise<void> {
+		const uniqueHashes = [...new Set(hashes)];
+		if (uniqueHashes.length < 2) {
+			throw new Error(this.text('Select at least two commits to squash.', '스쿼시할 커밋을 두 개 이상 선택하세요.'));
+		}
+		const context = await this.validateHistoryRewrite(uniqueHashes[0]);
+		const history = (await spawnGit(context.root, ['rev-list', '--first-parent', 'HEAD'])).stdout.trim().split(/\r?\n/).filter(Boolean);
+		const positions = uniqueHashes.map((hash) => history.indexOf(hash));
+		if (positions.some((position) => position < 0)) {
+			throw new Error(this.text('All selected commits must be on the current branch first-parent history.', '선택한 커밋은 모두 현재 브랜치의 first-parent 기록에 있어야 합니다.'));
+		}
+		positions.sort((left, right) => left - right);
+		if (positions.some((position, index) => index > 0 && position !== positions[index - 1] + 1)) {
+			throw new Error(this.text('Select consecutive commits to squash.', '연속된 커밋을 선택해서 스쿼시하세요.'));
+		}
+		const newest = history[positions[0]];
+		const oldest = history[positions.at(-1)!];
+		const oldestRevision = (await spawnGit(context.root, ['rev-list', '--parents', '-n', '1', oldest])).stdout.trim().split(/\s+/);
+		for (const hash of uniqueHashes) {
+			const revision = (await spawnGit(context.root, ['rev-list', '--parents', '-n', '1', hash])).stdout.trim().split(/\s+/);
+			if (revision.length !== 2) {
+				throw new Error(this.text('Root and merge commits cannot be squashed by this action.', '루트 커밋과 병합 커밋은 이 기능으로 스쿼시할 수 없습니다.'));
+			}
+		}
+		const commitsOldestFirst = history.slice(positions[0], positions.at(-1)! + 1).reverse();
+		const messages = await Promise.all(commitsOldestFirst.map(async (hash) => (await spawnGit(context.root, ['show', '-s', '--format=%B', hash])).stdout.trim()));
+		const message = await vscode.window.showInputBox({
+			title: this.text(`Squash ${uniqueHashes.length} Commits`, `커밋 ${uniqueHashes.length}개 스쿼시`),
+			prompt: this.text('Enter the message for the squashed commit.', '스쿼시된 커밋의 메시지를 입력하세요.'),
+			value: messages.join('\n\n'),
+			ignoreFocusOut: true,
+		});
+		if (!message?.trim()) return;
+		const confirmed = await vscode.window.showWarningMessage(
+			this.text(
+				`Squash ${uniqueHashes.length} commits on ${context.branch}? Later history will be rewritten and may require a force push.`,
+				`${context.branch}에서 커밋 ${uniqueHashes.length}개를 스쿼시할까요? 이후 기록이 변경되며 강제 푸시가 필요할 수 있습니다.`,
+			),
+			{ modal: true },
+			this.text('Squash Commits', '커밋 스쿼시'),
+		);
+		if (!confirmed) return;
+		const tree = (await spawnGit(context.root, ['show', '-s', '--format=%T', newest])).stdout.trim();
+		const [authorName, authorEmail, authorDate] = (await spawnGit(context.root, ['show', '-s', '--format=%an%x00%ae%x00%aI', oldest])).stdout.trimEnd().split('\0');
+		const replacement = (await spawnGit(context.root, ['commit-tree', tree, '-p', oldestRevision[1]], {
+			input: `${message.trim()}\n`,
+			env: { GIT_AUTHOR_NAME: authorName, GIT_AUTHOR_EMAIL: authorEmail, GIT_AUTHOR_DATE: authorDate },
+		})).stdout.trim();
+		if (context.head === newest) {
+			await spawnGit(context.root, ['reset', '--hard', replacement]);
+		} else {
+			await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', replacement, newest, context.branch]);
+		}
+		this.post({ type: 'selectCommitAfterRewrite', hash: replacement });
+	}
+
+	private async dropCommits(hashes: string[]): Promise<void> {
+		const uniqueHashes = [...new Set(hashes)];
+		if (uniqueHashes.length < 2) {
+			throw new Error(this.text('Select at least two commits to drop.', '삭제할 커밋을 두 개 이상 선택하세요.'));
+		}
+		const context = await this.validateHistoryRewrite(uniqueHashes[0]);
+		const history = (await spawnGit(context.root, ['rev-list', '--first-parent', 'HEAD'])).stdout.trim().split(/\r?\n/).filter(Boolean);
+		const positions = uniqueHashes.map((hash) => history.indexOf(hash)).sort((left, right) => left - right);
+		if (positions.some((position) => position < 0)) {
+			throw new Error(this.text('All selected commits must be on the current branch first-parent history.', '선택한 커밋은 모두 현재 브랜치의 first-parent 기록에 있어야 합니다.'));
+		}
+		if (positions.some((position, index) => index > 0 && position !== positions[index - 1] + 1)) {
+			throw new Error(this.text('Select consecutive commits to drop.', '연속된 커밋을 선택해서 삭제하세요.'));
+		}
+		const newest = history[positions[0]];
+		const oldest = history[positions.at(-1)!];
+		let parent: string | undefined;
+		for (const hash of uniqueHashes) {
+			const revision = (await spawnGit(context.root, ['rev-list', '--parents', '-n', '1', hash])).stdout.trim().split(/\s+/);
+			if (revision.length !== 2) {
+				throw new Error(this.text('Root and merge commits cannot be dropped by this action.', '루트 커밋과 병합 커밋은 이 기능으로 삭제할 수 없습니다.'));
+			}
+			if (hash === oldest) parent = revision[1];
+		}
+		if (!parent) throw new Error(this.text('Could not resolve the selected commit range.', '선택한 커밋 범위를 확인할 수 없습니다.'));
+		const confirmed = await vscode.window.showWarningMessage(
+			this.text(
+				`Drop ${uniqueHashes.length} commits from ${context.branch}? Later history will be rewritten and may require a force push.`,
+				`${context.branch}에서 커밋 ${uniqueHashes.length}개를 삭제할까요? 이후 기록이 변경되며 강제 푸시가 필요할 수 있습니다.`,
+			),
+			{ modal: true },
+			this.text('Drop Commits', '커밋 삭제'),
+		);
+		if (!confirmed) return;
+		if (context.head === newest) {
+			await spawnGit(context.root, ['reset', '--hard', parent]);
+		} else {
+			await spawnGit(context.root, ['rebase', '--rebase-merges', '--onto', parent, newest, context.branch]);
+		}
+		this.post({ type: 'selectCommitAfterRewrite', hash: parent });
 	}
 
 	private getCachedDetails(hash: string): GraphCommitDetailsDto | undefined {
